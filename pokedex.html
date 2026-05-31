@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pokédex | Smeargle Says</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="pokedex-page">
+  <a class="back-arrow" href="account.html">&lt;</a>
+
+  <main class="pokedex-layout">
+    <header class="pokedex-header">
+      <h1>Pokédex</h1>
+      <p><span id="pokedexDrawnCount">0</span>/1025 Pokémon drawn</p>
+    </header>
+
+    <section class="pokedex-controls">
+      <input id="pokedexSearch" type="search" placeholder="Search Pokémon...">
+      <select id="pokedexFilter">
+        <option value="all">All Pokémon</option>
+        <option value="drawn">Drawn only</option>
+        <option value="missing">Missing only</option>
+      </select>
+      <select id="generationFilter">
+        <option value="all">All generations</option>
+        <option value="1">Generation 1</option>
+        <option value="2">Generation 2</option>
+        <option value="3">Generation 3</option>
+        <option value="4">Generation 4</option>
+        <option value="5">Generation 5</option>
+        <option value="6">Generation 6</option>
+        <option value="7">Generation 7</option>
+        <option value="8">Generation 8</option>
+        <option value="9">Generation 9</option>
+        <option value="bonus">Bonus forms</option>
+      </select>
+      <select id="sortMode">
+        <option value="number">Sort by number</option>
+        <option value="az">Alphabetical A-Z</option>
+        <option value="za">Alphabetical Z-A</option>
+        <option value="drawnFirst">Drawn first</option>
+        <option value="missingFirst">Missing first</option>
+      </select>
+    </section>
+
+    <section id="pokedexList" class="pokedex-list" aria-live="polite">
+      <p class="loading-text">Loading Pokédex...</p>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>

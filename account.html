@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account | Smeargle Says</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="account-page">
+  <a class="back-arrow" href="login.html">&lt;</a>
+
+  <button id="newGameBtn" class="new-game-button">NEW GAME</button>
+
+  <main class="account-layout">
+    <button id="avatarButton" class="avatar" aria-label="Change profile avatar" title="Click to choose a sketch from your Pokédex">
+      <img id="avatarImage" class="avatar-image hidden" alt="Current avatar">
+      <span class="avatar-hint">Change avatar</span>
+      <div class="avatar-head"></div>
+      <div class="avatar-body"></div>
+    </button>
+
+    <section class="account-info">
+      <h1 id="profileName">Username</h1>
+      <p>Account created: <span id="createdDate">mm/dd/yyyy</span></p>
+      <p>Pokémon drawn: <span id="drawnCount">xxxx</span>/1025</p>
+      <button class="small-button">EDIT PROFILE</button>
+      <a class="small-button pokedex-button" href="pokedex.html">POKÉDEX</a>
+    </section>
+  </main>
+
+  <div id="avatarOverlay" class="modal-overlay hidden">
+    <section class="avatar-modal">
+      <button id="closeAvatarBtn" class="close-button">×</button>
+      <h2>Choose an avatar</h2>
+      <p>Select one of your saved Pokédex sketches.</p>
+      <div id="avatarChoices" class="avatar-choices"></div>
+    </section>
+  </div>
+
+  <div id="configOverlay" class="modal-overlay hidden">
+    <section class="config-modal">
+      <button id="closeConfigBtn" class="close-button">×</button>
+
+      <label class="config-row">
+        <span>Time Limit:</span>
+        <select id="timeLimit">
+          <option value="30">30s</option>
+          <option value="60">60s</option>
+          <option value="120" selected>120s</option>
+          <option value="180">180s</option>
+        </select>
+      </label>
+
+      <label class="config-row">
+        <span>Total Rounds:</span>
+        <input id="totalRounds" type="number" min="1" max="20" value="5">
+      </label>
+
+      <fieldset class="generation-options">
+        <legend>Generations:</legend>
+        <label><input type="checkbox" name="generation" value="1" checked> 1</label>
+        <label><input type="checkbox" name="generation" value="2" checked> 2</label>
+        <label><input type="checkbox" name="generation" value="3" checked> 3</label>
+        <label><input type="checkbox" name="generation" value="4"> 4</label>
+        <label><input type="checkbox" name="generation" value="5"> 5</label>
+        <label><input type="checkbox" name="generation" value="6"> 6</label>
+        <label><input type="checkbox" name="generation" value="7"> 7</label>
+        <label><input type="checkbox" name="generation" value="8"> 8</label>
+        <label><input type="checkbox" name="generation" value="9"> 9</label>
+      </fieldset>
+
+      <label class="check-row">Include Mega Evolutions? <input id="includeMegas" type="checkbox"></label>
+      <label class="check-row">Include Gigantamax Forms? <input id="includeGmax" type="checkbox"></label>
+      <label class="check-row">Include Regional Forms? <input id="includeRegional" type="checkbox"></label>
+      <label class="check-row">Include Other Forms? <input id="includeOtherForms" type="checkbox"></label>
+
+      <button id="startGameBtn" class="start-button">START</button>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
