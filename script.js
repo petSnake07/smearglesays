@@ -130,8 +130,42 @@ function getGameSettings() {
     includeMegas: Boolean(saved.includeMegas),
     includeGmax: Boolean(saved.includeGmax),
     includeRegional: Boolean(saved.includeRegional),
-    includeOtherForms: Boolean(saved.includeOtherForms)
+    includeOtherForms: Boolean(saved.includeOtherForms),
+    gameMode: saved.gameMode || "solo",
+    lobbyCode: saved.lobbyCode || ""
   };
+}
+
+function getLobbies() {
+  return JSON.parse(localStorage.getItem("pokedrawLobbies") || "{}");
+}
+
+function saveLobbies(lobbies) {
+  localStorage.setItem("pokedrawLobbies", JSON.stringify(lobbies));
+}
+
+function makeLobbyCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return code;
+}
+
+function getPlayerName() {
+  return sessionStorage.getItem("pokedrawPlayerName") || getUsername();
+}
+
+function normalizeAnswer(text) {
+  return String(text || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function guessMatchesAnswer(guess, answer) {
+  const guessText = normalizeAnswer(guess);
+  const keywords = normalizeAnswer(answer).split(" ").filter(Boolean);
+  return keywords.length > 0 && keywords.every((word) => guessText.includes(word));
 }
 
 function setupLoginPage() {
@@ -203,11 +237,16 @@ function setupCreateAccountPage() {
 
 function setupAccountPage() {
   const newGameBtn = document.getElementById("newGameBtn");
+  const joinGameBtn = document.getElementById("joinGameBtn");
   const configOverlay = document.getElementById("configOverlay");
   if (!newGameBtn || !configOverlay) return;
 
   const closeConfigBtn = document.getElementById("closeConfigBtn");
   const startGameBtn = document.getElementById("startGameBtn");
+  const lobbyCodeInput = document.getElementById("lobbyCode");
+  const joinOverlay = document.getElementById("joinOverlay");
+  const closeJoinBtn = document.getElementById("closeJoinBtn");
+  const joinStartBtn = document.getElementById("joinStartBtn");
   const profileName = document.getElementById("profileName");
   const drawnCount = document.getElementById("drawnCount");
   const createdDate = document.getElementById("createdDate");
@@ -282,24 +321,74 @@ function setupAccountPage() {
   document.getElementById("includeGmax").checked = savedSettings.includeGmax;
   document.getElementById("includeRegional").checked = savedSettings.includeRegional;
   document.getElementById("includeOtherForms").checked = savedSettings.includeOtherForms;
+  const savedModeInput = document.querySelector(`input[name="gameMode"][value="${savedSettings.gameMode}"]`);
+  if (savedModeInput) savedModeInput.checked = true;
+  lobbyCodeInput.value = savedSettings.lobbyCode || makeLobbyCode();
 
-  newGameBtn.addEventListener("click", () => configOverlay.classList.remove("hidden"));
+  newGameBtn.addEventListener("click", () => {
+    if (!lobbyCodeInput.value) lobbyCodeInput.value = makeLobbyCode();
+    configOverlay.classList.remove("hidden");
+  });
   closeConfigBtn.addEventListener("click", () => configOverlay.classList.add("hidden"));
   configOverlay.addEventListener("click", (event) => {
     if (event.target === configOverlay) configOverlay.classList.add("hidden");
   });
 
+  if (joinGameBtn && joinOverlay) {
+    joinGameBtn.addEventListener("click", () => joinOverlay.classList.remove("hidden"));
+    closeJoinBtn.addEventListener("click", () => joinOverlay.classList.add("hidden"));
+    joinOverlay.addEventListener("click", (event) => {
+      if (event.target === joinOverlay) joinOverlay.classList.add("hidden");
+    });
+    joinStartBtn.addEventListener("click", () => {
+      const code = document.getElementById("joinLobbyCode").value.trim().toUpperCase();
+      const playerName = document.getElementById("joinPlayerName").value.trim() || getUsername();
+      const error = document.getElementById("joinError");
+      const lobbies = getLobbies();
+      if (!code || !lobbies[code]) {
+        error.textContent = "Lobby code not found on this browser. A real online version needs a WebSocket backend.";
+        return;
+      }
+      if (!lobbies[code].players.includes(playerName)) lobbies[code].players.push(playerName);
+      saveLobbies(lobbies);
+      localStorage.setItem("pokedrawSettings", JSON.stringify(lobbies[code].settings));
+      sessionStorage.setItem("pokedrawLobbyCode", code);
+      sessionStorage.setItem("pokedrawPlayerName", playerName);
+      window.location.href = "canvas.html";
+    });
+  }
+
   startGameBtn.addEventListener("click", () => {
     const generations = [...document.querySelectorAll('input[name="generation"]:checked')].map((input) => Number(input.value));
-    localStorage.setItem("pokedrawSettings", JSON.stringify({
+    const selectedMode = document.querySelector('input[name="gameMode"]:checked')?.value || "solo";
+    const lobbyCode = lobbyCodeInput.value || makeLobbyCode();
+    const settings = {
       timeLimit: Number(document.getElementById("timeLimit").value),
       totalRounds: Number(document.getElementById("totalRounds").value),
       generations: generations.length ? generations : [1, 2, 3, 4, 5, 6, 7, 8, 9],
       includeMegas: document.getElementById("includeMegas").checked,
       includeGmax: document.getElementById("includeGmax").checked,
       includeRegional: document.getElementById("includeRegional").checked,
-      includeOtherForms: document.getElementById("includeOtherForms").checked
-    }));
+      includeOtherForms: document.getElementById("includeOtherForms").checked,
+      gameMode: selectedMode,
+      lobbyCode
+    };
+    localStorage.setItem("pokedrawSettings", JSON.stringify(settings));
+    sessionStorage.setItem("pokedrawLobbyCode", lobbyCode);
+    sessionStorage.setItem("pokedrawPlayerName", getUsername());
+    const lobbies = getLobbies();
+    lobbies[lobbyCode] = {
+      code: lobbyCode,
+      createdAt: new Date().toISOString(),
+      settings,
+      players: [getUsername()],
+      round: 1,
+      artistIndex: 0,
+      currentPokemonChoice: null,
+      chainDrawings: {},
+      competitiveScores: {}
+    };
+    saveLobbies(lobbies);
     window.location.href = "canvas.html";
   });
 }
@@ -320,6 +409,33 @@ function setupCanvasPage() {
   const eraserBtn = document.getElementById("eraserBtn");
 
   const settings = getGameSettings();
+  const lobbyCode = sessionStorage.getItem("pokedrawLobbyCode") || settings.lobbyCode || "";
+  const playerName = getPlayerName();
+  const isMultiplayer = settings.gameMode && settings.gameMode !== "solo";
+  const channel = isMultiplayer && lobbyCode ? new BroadcastChannel(`pokedraw_${lobbyCode}`) : null;
+  let lobbyState = lobbyCode ? getLobbies()[lobbyCode] : null;
+  if (isMultiplayer && lobbyCode && !lobbyState) {
+    const lobbies = getLobbies();
+    lobbies[lobbyCode] = {
+      code: lobbyCode,
+      createdAt: new Date().toISOString(),
+      settings,
+      players: [playerName],
+      round: 1,
+      artistIndex: 0,
+      currentPokemonChoice: null,
+      chainDrawings: {},
+      competitiveScores: {}
+    };
+    saveLobbies(lobbies);
+    lobbyState = lobbies[lobbyCode];
+  }
+  if (lobbyState && !lobbyState.players.includes(playerName)) {
+    lobbyState.players.push(playerName);
+    const lobbies = getLobbies();
+    lobbies[lobbyCode] = lobbyState;
+    saveLobbies(lobbies);
+  }
   let drawing = false;
   let activeTool = "brush";
   let brushColor = "#000000";
@@ -330,6 +446,87 @@ function setupCanvasPage() {
   let round = 1;
   let currentPokemon = null;
   let blankCanvas = canvas.toDataURL("image/png");
+
+
+  function getRoundArtist() {
+    const lobby = lobbyCode ? getLobbies()[lobbyCode] : null;
+    const players = lobby?.players?.length ? lobby.players : [playerName];
+    const index = ((round - 1) % players.length + players.length) % players.length;
+    return players[index];
+  }
+
+  function amArtist() {
+    return !isMultiplayer || settings.gameMode !== "guessing" || getRoundArtist() === playerName;
+  }
+
+  function updateLobbyPatch(patch) {
+    if (!lobbyCode) return;
+    const lobbies = getLobbies();
+    const current = lobbies[lobbyCode] || lobbyState || {};
+    lobbies[lobbyCode] = { ...current, ...patch };
+    lobbyState = lobbies[lobbyCode];
+    saveLobbies(lobbies);
+  }
+
+  function createMultiplayerPanel() {
+    if (!isMultiplayer) return;
+    const modeTitle = settings.gameMode === "guessing" ? "Guessing Game" : settings.gameMode === "buildon" ? "Build-on" : "Competitive";
+    const rightPanel = document.querySelector(".reference");
+    rightPanel.classList.add("multiplayer-side");
+    if (settings.gameMode === "guessing" && !amArtist()) {
+      rightPanel.innerHTML = `
+        <h3>${modeTitle}</h3>
+        <p class="helper-text">Lobby <strong>${lobbyCode}</strong></p>
+        <p>Artist: <strong id="artistName">${getRoundArtist()}</strong></p>
+        <p>Your guesses:</p>
+        <div id="guessLog" class="guess-log"></div>
+        <input id="guessInput" class="guess-input" placeholder="Type a guess">
+        <button id="guessSubmitBtn" class="small-action">Guess</button>
+      `;
+      canvas.classList.add("spectator-canvas");
+      document.querySelectorAll(".toolbar button, .toolbar input").forEach((control) => control.disabled = true);
+      document.getElementById("guessSubmitBtn").addEventListener("click", submitGuess);
+      document.getElementById("guessInput").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") submitGuess();
+      });
+    } else if (settings.gameMode === "guessing") {
+      rightPanel.insertAdjacentHTML("afterbegin", `<p class="helper-text">Lobby <strong>${lobbyCode}</strong><br>You are the artist. Others are guessing.</p>`);
+    } else if (settings.gameMode === "buildon") {
+      rightPanel.insertAdjacentHTML("afterbegin", `<p class="helper-text">Lobby <strong>${lobbyCode}</strong><br>Each round passes the previous sketch to the next player. Press Done to save your layer.</p>`);
+    } else if (settings.gameMode === "competitive") {
+      rightPanel.insertAdjacentHTML("afterbegin", `<p class="helper-text">Lobby <strong>${lobbyCode}</strong><br>Everyone gets the same prompt. Done saves and scores your entry.</p>`);
+    }
+  }
+
+  function appendGuessLine(text) {
+    const log = document.getElementById("guessLog");
+    if (!log) return;
+    const line = document.createElement("p");
+    line.textContent = text;
+    log.appendChild(line);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function submitGuess() {
+    const input = document.getElementById("guessInput");
+    if (!input || !currentPokemon) return;
+    const guess = input.value.trim();
+    if (!guess) return;
+    input.value = "";
+    const correct = guessMatchesAnswer(guess, currentPokemon.name);
+    appendGuessLine(`${playerName}: ${guess}${correct ? " ✓" : ""}`);
+    channel?.postMessage({ type: "guess", playerName, guess, correct, answer: currentPokemon.name });
+    if (correct) {
+      alert(`${playerName} guessed ${currentPokemon.name}!`);
+      channel?.postMessage({ type: "roundComplete", reason: "correctGuess", playerName });
+      nextRound(false);
+    }
+  }
+
+  function broadcastCanvasSnapshot() {
+    if (!channel || settings.gameMode !== "guessing" || !amArtist()) return;
+    channel.postMessage({ type: "canvasSnapshot", image: canvas.toDataURL("image/png") });
+  }
 
   function setActiveTool(tool) {
     activeTool = tool;
@@ -386,6 +583,7 @@ function setupCanvasPage() {
   }
 
   function startDrawing(event) {
+    if (settings.gameMode === "guessing" && !amArtist()) return;
     const position = getPointerPosition(event);
     if (activeTool === "fill") {
       floodFill(position.x, position.y);
@@ -398,6 +596,7 @@ function setupCanvasPage() {
   function stopDrawing() {
     drawing = false;
     ctx.beginPath();
+    broadcastCanvasSnapshot();
   }
 
   function draw(event) {
@@ -585,6 +784,38 @@ function setupCanvasPage() {
     };
   }
 
+
+  if (channel) {
+    channel.onmessage = (event) => {
+      const message = event.data || {};
+      if (message.type === "canvasSnapshot" && settings.gameMode === "guessing" && !amArtist()) {
+        const image = new Image();
+        image.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        };
+        image.src = message.image;
+      }
+      if (message.type === "guess") {
+        appendGuessLine(`${message.playerName}: ${message.guess}${message.correct ? " ✓" : ""}`);
+        if (message.correct && settings.gameMode === "guessing") {
+          alert(`${message.playerName} guessed ${message.answer}!`);
+        }
+      }
+      if (message.type === "roundComplete" && settings.gameMode === "guessing") {
+        nextRound(false, true);
+      }
+      if (message.type === "nextRound") {
+        round = message.round;
+        roundNumber.textContent = `Round ${round}`;
+        timeLeft = settings.timeLimit;
+        clearCanvas();
+        loadRandomPokemon();
+        startTimer();
+      }
+    };
+  }
+
   canvas.addEventListener("pointerdown", startDrawing);
   canvas.addEventListener("pointerup", stopDrawing);
   canvas.addEventListener("pointerleave", stopDrawing);
@@ -626,7 +857,12 @@ function setupCanvasPage() {
   const getRandomPokemonChoice = () => pokemonPool[Math.floor(Math.random() * pokemonPool.length)] || 1;
 
   async function loadRandomPokemon() {
-    const randomChoice = getRandomPokemonChoice();
+    let randomChoice = getRandomPokemonChoice();
+    if (isMultiplayer && lobbyCode) {
+      const lobby = getLobbies()[lobbyCode];
+      if (lobby?.currentPokemonChoice) randomChoice = lobby.currentPokemonChoice;
+      else updateLobbyPatch({ currentPokemonChoice: randomChoice, round });
+    }
     try {
       const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${randomChoice}`);
       const data = await response.json();
@@ -668,12 +904,16 @@ function setupCanvasPage() {
     round++;
     roundNumber.textContent = `Round ${round}`;
     timeLeft = settings.timeLimit;
+    if (isMultiplayer && lobbyCode) {
+      updateLobbyPatch({ round, artistIndex: (round - 1), currentPokemonChoice: null });
+      channel?.postMessage({ type: "nextRound", round });
+    }
     clearCanvas();
     loadRandomPokemon();
     startTimer();
   }
 
-  function nextRound(shouldSave) {
+  function nextRound(shouldSave, fromRemote = false) {
     if (shouldSave) {
       clearInterval(timerInterval);
       const scoreResult = scoreCurrentDrawing();
@@ -690,11 +930,20 @@ function setupCanvasPage() {
     round++;
     roundNumber.textContent = `Round ${round}`;
     timeLeft = settings.timeLimit;
+    if (isMultiplayer && lobbyCode) {
+      updateLobbyPatch({ round, artistIndex: (round - 1), currentPokemonChoice: null });
+      if (!fromRemote) channel?.postMessage({ type: "nextRound", round });
+    }
     clearCanvas();
     loadRandomPokemon();
     startTimer();
   }
 
+  createMultiplayerPanel();
+  if (settings.gameMode === "guessing" && !amArtist()) {
+    doneBtn.disabled = true;
+    giveUpBtn.disabled = true;
+  }
   setActiveTool("brush");
   roundNumber.textContent = `Round ${round}`;
   clearCanvas();
