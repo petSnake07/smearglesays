@@ -9,7 +9,10 @@
 <body class="account-page">
   <a class="back-arrow" href="login.html">&lt;</a>
 
-  <button id="newGameBtn" class="new-game-button">NEW GAME</button>
+  <div class="account-actions">
+    <button id="newGameBtn" class="new-game-button">NEW GAME</button>
+    <button id="joinGameBtn" class="join-game-button">JOIN GAME</button>
+  </div>
 
   <main class="account-layout">
     <button id="avatarButton" class="avatar" aria-label="Change profile avatar" title="Click to choose a sketch from your Pokédex">
@@ -34,6 +37,23 @@
       <h2>Choose an avatar</h2>
       <p>Select one of your saved Pokédex sketches.</p>
       <div id="avatarChoices" class="avatar-choices"></div>
+    </section>
+  </div>
+
+  <div id="joinOverlay" class="modal-overlay hidden">
+    <section class="join-modal">
+      <button id="closeJoinBtn" class="close-button">×</button>
+      <h2>Join Game</h2>
+      <label class="config-row">
+        <span>Lobby Code:</span>
+        <input id="joinLobbyCode" type="text" maxlength="6" placeholder="ABC123">
+      </label>
+      <label class="config-row">
+        <span>Your Name:</span>
+        <input id="joinPlayerName" type="text" placeholder="Player 2">
+      </label>
+      <p id="joinError" class="form-error"></p>
+      <button id="joinStartBtn" class="small-button">JOIN</button>
     </section>
   </div>
 
@@ -73,6 +93,26 @@
       <label class="check-row">Include Gigantamax Forms? <input id="includeGmax" type="checkbox"></label>
       <label class="check-row">Include Regional Forms? <input id="includeRegional" type="checkbox"></label>
       <label class="check-row">Include Other Forms? <input id="includeOtherForms" type="checkbox"></label>
+
+      <fieldset class="mode-options mode-grid">
+        <legend>Game Mode:</legend>
+        <div class="mode-column">
+          <h3>Solo</h3>
+          <label><input type="radio" name="gameMode" value="solo" checked> Classic</label>
+        </div>
+        <div class="mode-column">
+          <h3>Multiplayer</h3>
+          <label><input type="radio" name="gameMode" value="guessing"> Guessing Game</label>
+          <label><input type="radio" name="gameMode" value="buildon"> Build-on</label>
+          <label><input type="radio" name="gameMode" value="competitive"> Competitive</label>
+        </div>
+      </fieldset>
+
+      <label class="config-row lobby-code-row">
+        <span>Lobby Code:</span>
+        <input id="lobbyCode" type="text" readonly value="">
+      </label>
+      <p class="helper-text">Share this code with friends, then have them press Join Game.</p>
 
       <button id="startGameBtn" class="start-button">START</button>
     </section>
