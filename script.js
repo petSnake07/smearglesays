@@ -121,6 +121,124 @@ function getDrawnPokemonCount() {
   return Object.values(getStoredSketches()).filter((entry) => entry?.drawings?.length).length;
 }
 
+
+function getStatsKey() {
+  return `pokedrawStats_${getUsername()}`;
+}
+
+function getUserStats() {
+  return JSON.parse(localStorage.getItem(getStatsKey()) || JSON.stringify({
+    roundsPlayed: 0,
+    savedDrawings: 0,
+    totalScore: 0,
+    scoredDrawings: 0,
+    bestScore: null,
+    lastPlayed: "",
+    dailyStreak: 0,
+    lastDailyDate: ""
+  }));
+}
+
+function saveUserStats(stats) {
+  localStorage.setItem(getStatsKey(), JSON.stringify(stats));
+}
+
+function recordDrawingStats(scoreResult = null, isDaily = false) {
+  const stats = getUserStats();
+  stats.roundsPlayed = Number(stats.roundsPlayed || 0) + 1;
+  stats.savedDrawings = Number(stats.savedDrawings || 0) + 1;
+  stats.lastPlayed = new Date().toISOString();
+
+  if (scoreResult && typeof scoreResult.score === "number") {
+    stats.scoredDrawings = Number(stats.scoredDrawings || 0) + 1;
+    stats.totalScore = Number(stats.totalScore || 0) + scoreResult.score;
+    stats.bestScore = Math.max(Number(stats.bestScore || 0), scoreResult.score);
+  }
+
+  if (isDaily) {
+    const today = todayKey();
+    if (stats.lastDailyDate !== today) {
+      const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      stats.dailyStreak = stats.lastDailyDate === yesterday ? Number(stats.dailyStreak || 0) + 1 : 1;
+      stats.lastDailyDate = today;
+    }
+  }
+
+  saveUserStats(stats);
+}
+
+function getAchievementData() {
+  const stats = getUserStats();
+  const drawn = getDrawnPokemonCount();
+  const best = Number(stats.bestScore || 0);
+
+  return [
+    { name: "First Sketch", unlocked: drawn >= 1, hint: "Save your first drawing." },
+    { name: "Pokédex Starter", unlocked: drawn >= 10, hint: "Draw 10 Pokémon." },
+    { name: "Sketch Marathon", unlocked: Number(stats.roundsPlayed || 0) >= 25, hint: "Play 25 rounds." },
+    { name: "Professor Approved", unlocked: best >= 80, hint: "Score 80+ on a drawing." },
+    { name: "Daily Painter", unlocked: Number(stats.dailyStreak || 0) >= 3, hint: "Complete 3 daily challenges in a row." },
+    { name: "Completionist", unlocked: drawn >= 1025, hint: "Draw every listed Pokémon." }
+  ];
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function getDailyPokemonId() {
+  const today = todayKey();
+  let hash = 0;
+  for (let i = 0; i < today.length; i++) hash = (hash * 31 + today.charCodeAt(i)) >>> 0;
+  return (hash % POKEMON_LIMIT) + 1;
+}
+
+function formatPokemonName(name) {
+  return String(name || "").split("-").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("-");
+}
+
+function startDailyChallenge() {
+  const dailyId = getDailyPokemonId();
+  localStorage.setItem("pokedrawSettings", JSON.stringify({
+    timeLimit: 120,
+    totalRounds: 1,
+    generations: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    includeMegas: false,
+    includeGmax: false,
+    includeRegional: false,
+    includeOtherForms: false,
+    gameMode: "solo",
+    lobbyCode: "",
+    forcedPokemonChoice: dailyId,
+    dailyChallenge: true,
+    dailyDate: todayKey()
+  }));
+  sessionStorage.removeItem("pokedrawLobbyCode");
+  window.location.href = "canvas.html";
+}
+
+async function setupDailyChallengeCards() {
+  const cards = document.querySelectorAll(".daily-card");
+  if (!cards.length) return;
+  const dailyId = getDailyPokemonId();
+  let name = `Pokémon #${dailyId}`;
+  let image = "";
+  try {
+    const response = await fetch(`https://pokeapi.co/api/v2/pokemon/${dailyId}`);
+    const data = await response.json();
+    name = formatPokemonName(data.name);
+    image = data.sprites.other["official-artwork"].front_default || data.sprites.front_default || "";
+  } catch (error) {
+    console.error(error);
+  }
+  document.querySelectorAll("#dailyHomeName, #dailyAccountName").forEach((element) => element.textContent = name);
+  document.querySelectorAll("#dailyHomeImage, #dailyAccountImage").forEach((element) => {
+    if (image) element.src = image;
+    element.alt = name;
+  });
+  document.querySelectorAll("#dailyHomeBtn, #dailyAccountBtn").forEach((button) => button.addEventListener("click", startDailyChallenge));
+}
+
 function getGameSettings() {
   const saved = JSON.parse(localStorage.getItem("pokedrawSettings") || "{}");
   return {
@@ -132,7 +250,10 @@ function getGameSettings() {
     includeRegional: Boolean(saved.includeRegional),
     includeOtherForms: Boolean(saved.includeOtherForms),
     gameMode: saved.gameMode || "solo",
-    lobbyCode: saved.lobbyCode || ""
+    lobbyCode: saved.lobbyCode || "",
+    forcedPokemonChoice: saved.forcedPokemonChoice || null,
+    dailyChallenge: Boolean(saved.dailyChallenge),
+    dailyDate: saved.dailyDate || ""
   };
 }
 
@@ -311,6 +432,33 @@ function setupAccountPage() {
   });
   closeAvatarBtn.addEventListener("click", () => avatarOverlay.classList.add("hidden"));
 
+  function renderProfileExtras() {
+    const stats = getUserStats();
+    const avg = stats.scoredDrawings ? Math.round(stats.totalScore / stats.scoredDrawings) : null;
+    const setText = (id, value) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    };
+
+    setText("statRounds", stats.roundsPlayed || 0);
+    setText("statBestScore", stats.bestScore ? `${stats.bestScore}/100` : "--");
+    setText("statAvgScore", avg ? `${avg}/100` : "--");
+    setText("statStreak", stats.dailyStreak || 0);
+
+    const list = document.getElementById("achievementList");
+    if (list) {
+      list.innerHTML = getAchievementData().map((achievement) => `
+        <div class="achievement ${achievement.unlocked ? "unlocked" : "locked"}">
+          <span>${achievement.unlocked ? "🏆" : "○"}</span>
+          <strong>${achievement.name}</strong>
+          <small>${achievement.hint}</small>
+        </div>
+      `).join("");
+    }
+  }
+
+  renderProfileExtras();
+
   const savedSettings = getGameSettings();
   document.getElementById("timeLimit").value = savedSettings.timeLimit;
   document.getElementById("totalRounds").value = savedSettings.totalRounds;
@@ -371,7 +519,10 @@ function setupAccountPage() {
       includeRegional: document.getElementById("includeRegional").checked,
       includeOtherForms: document.getElementById("includeOtherForms").checked,
       gameMode: selectedMode,
-      lobbyCode
+      lobbyCode,
+      forcedPokemonChoice: null,
+      dailyChallenge: false,
+      dailyDate: ""
     };
     localStorage.setItem("pokedrawSettings", JSON.stringify(settings));
     sessionStorage.setItem("pokedrawLobbyCode", lobbyCode);
@@ -405,6 +556,8 @@ function setupCanvasPage() {
   const giveUpBtn = document.getElementById("giveUpBtn");
   const doneBtn = document.getElementById("doneBtn");
   const fillBtn = document.getElementById("fillBtn");
+  const undoBtn = document.getElementById("undoBtn");
+  const redoBtn = document.getElementById("redoBtn");
   const brushBtn = document.getElementById("brushBtn");
   const eraserBtn = document.getElementById("eraserBtn");
 
@@ -446,6 +599,36 @@ function setupCanvasPage() {
   let round = 1;
   let currentPokemon = null;
   let blankCanvas = canvas.toDataURL("image/png");
+  let undoStack = [];
+  let redoStack = [];
+
+  function pushUndoState() {
+    undoStack.push(canvas.toDataURL("image/png"));
+    if (undoStack.length > 30) undoStack.shift();
+    redoStack = [];
+  }
+
+  function restoreCanvasState(dataUrl) {
+    const image = new Image();
+    image.onload = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      broadcastCanvasSnapshot();
+    };
+    image.src = dataUrl;
+  }
+
+  function undoCanvas() {
+    if (!undoStack.length) return;
+    redoStack.push(canvas.toDataURL("image/png"));
+    restoreCanvasState(undoStack.pop());
+  }
+
+  function redoCanvas() {
+    if (!redoStack.length) return;
+    undoStack.push(canvas.toDataURL("image/png"));
+    restoreCanvasState(redoStack.pop());
+  }
 
 
   function getRoundArtist() {
@@ -586,9 +769,12 @@ function setupCanvasPage() {
     if (settings.gameMode === "guessing" && !amArtist()) return;
     const position = getPointerPosition(event);
     if (activeTool === "fill") {
+      pushUndoState();
       floodFill(position.x, position.y);
+      broadcastCanvasSnapshot();
       return;
     }
+    pushUndoState();
     drawing = true;
     draw(event);
   }
@@ -619,6 +805,12 @@ function setupCanvasPage() {
     blankCanvas = canvas.toDataURL("image/png");
   }
 
+  function clearCanvasWithUndo() {
+    pushUndoState();
+    clearCanvas();
+    broadcastCanvasSnapshot();
+  }
+
   function saveCurrentDrawing(scoreResult = null) {
     if (!currentPokemon) return null;
     const image = canvas.toDataURL("image/png");
@@ -641,7 +833,8 @@ function setupCanvasPage() {
       date: new Date().toLocaleString(),
       round,
       score: scoreResult?.score ?? null,
-      scoreMessage: scoreResult?.message ?? ""
+      scoreMessage: scoreResult?.message ?? "",
+      scoreBreakdown: scoreResult?.breakdown ?? null
     };
     sketches[pokemonKey].drawings.unshift(savedDrawing);
     saveStoredSketches(sketches);
@@ -655,9 +848,10 @@ function setupCanvasPage() {
     modal.id = "scoreOverlay";
     modal.className = "modal-overlay hidden";
     modal.innerHTML = `
-      <div class="score-modal">
-        <h2>AI Score</h2>
+      <div class="score-modal detailed-score-modal">
+        <h2>Score</h2>
         <div id="scoreNumber" class="score-number">--</div>
+        <div id="scoreBreakdown" class="score-breakdown" aria-live="polite"></div>
         <p id="scoreMessage">Comparing your drawing...</p>
         <button id="scoreContinueBtn">Next Round</button>
       </div>
@@ -748,7 +942,11 @@ function setupCanvasPage() {
       const refStats = getMaskStats(referenceMask);
 
       if (!userStats.count) {
-        return { score: 0, message: "No drawing detected yet. Try sketching before pressing Done!" };
+        return {
+          score: 0,
+          message: "No drawing detected yet. Try sketching before pressing Done!",
+          breakdown: { outline: 0, proportions: 0, placement: 0, detail: 0 }
+        };
       }
 
       const coverageRatio = Math.min(userStats.count, refStats.count) / Math.max(userStats.count, refStats.count || 1);
@@ -759,24 +957,63 @@ function setupCanvasPage() {
       const centerSimilarity = Math.max(0, 1 - centerDistance / 90);
       const completion = Math.min(1, userStats.count / 900);
 
-      const rawScore = (overlap * 0.45) + (sizeSimilarity * 0.3) + (centerSimilarity * 0.15) + (completion * 0.1);
-      const score = Math.max(1, Math.min(100, Math.round(rawScore * 100)));
+      const outlineScore = Math.max(0, Math.min(100, Math.round(overlap * 100)));
+      const proportionsScore = Math.max(0, Math.min(100, Math.round(sizeSimilarity * 100)));
+      const placementScore = Math.max(0, Math.min(100, Math.round(centerSimilarity * 100)));
+      const detailScore = Math.max(0, Math.min(100, Math.round(completion * 100)));
+
+      const rawScore = (outlineScore * 0.45) + (proportionsScore * 0.3) + (placementScore * 0.15) + (detailScore * 0.1);
+      const score = Math.max(1, Math.min(100, Math.round(rawScore)));
       let message = "Nice effort! The AI saw some similarity in the overall shape.";
-      if (score >= 80) message = "Excellent match! Strong shape, size, and placement similarity.";
-      else if (score >= 60) message = "Good job! The drawing has a decent outline match.";
-      else if (score >= 35) message = "Not bad! Try matching the Pokémon's silhouette more closely.";
-      else message = "Keep practicing! Focus on the biggest outline and main body shape first.";
-      return { score, message };
+      if (score >= 80) message = "Excellent match! Strong outline, proportions, and placement.";
+      else if (score >= 60) message = "Good job! The drawing has a decent silhouette match.";
+      else if (score >= 35) message = "Not bad! Try matching the Pokémon's biggest shapes more closely.";
+      else message = "Keep practicing! Focus on the main body shape first.";
+      return {
+        score,
+        message,
+        breakdown: {
+          outline: outlineScore,
+          proportions: proportionsScore,
+          placement: placementScore,
+          detail: detailScore
+        }
+      };
     } catch (error) {
       console.error(error);
-      return { score: null, message: "The score could not be calculated, but your drawing was saved." };
+      return {
+        score: null,
+        message: "The score could not be calculated, but your drawing was saved.",
+        breakdown: null
+      };
     }
+  }
+
+  function makeScoreBar(label, value) {
+    const safeValue = Math.max(0, Math.min(100, Number(value) || 0));
+    const filled = Math.round(safeValue / 10);
+    const blocks = "".repeat(filled) + "".repeat(10 - filled);
+    return `
+      <div class="score-row">
+        <span class="score-label">${label}</span>
+        <span class="score-bar-text" aria-hidden="true">${blocks}</span>
+        <span class="score-value">${safeValue}</span>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width:${safeValue}%"></div></div>
+      </div>
+    `;
   }
 
   function showScoreThenContinue(scoreResult) {
     const modal = createScoreModal();
     document.getElementById("scoreNumber").textContent = scoreResult.score === null ? "Saved" : `${scoreResult.score}/100`;
     document.getElementById("scoreMessage").textContent = scoreResult.message;
+    const breakdown = scoreResult.breakdown || { outline: 0, proportions: 0, placement: 0, detail: 0 };
+    document.getElementById("scoreBreakdown").innerHTML = `
+      ${makeScoreBar("Outline", breakdown.outline)}
+      ${makeScoreBar("Proportions", breakdown.proportions)}
+      ${makeScoreBar("Placement", breakdown.placement)}
+      ${makeScoreBar("Detail", breakdown.detail)}
+    `;
     modal.classList.remove("hidden");
     document.getElementById("scoreContinueBtn").onclick = () => {
       modal.classList.add("hidden");
@@ -824,7 +1061,9 @@ function setupCanvasPage() {
   document.getElementById("color").addEventListener("change", (event) => brushColor = event.target.value);
   document.getElementById("size").addEventListener("change", (event) => brushSize = Number(event.target.value));
   document.getElementById("opacity").addEventListener("change", (event) => brushOpacity = Number(event.target.value));
-  document.getElementById("clearBtn").addEventListener("click", clearCanvas);
+  document.getElementById("clearBtn").addEventListener("click", clearCanvasWithUndo);
+  undoBtn?.addEventListener("click", undoCanvas);
+  redoBtn?.addEventListener("click", redoCanvas);
   eraserBtn.addEventListener("click", () => setActiveTool("eraser"));
   brushBtn.addEventListener("click", () => setActiveTool("brush"));
   fillBtn.addEventListener("click", () => setActiveTool("fill"));
@@ -857,7 +1096,7 @@ function setupCanvasPage() {
   const getRandomPokemonChoice = () => pokemonPool[Math.floor(Math.random() * pokemonPool.length)] || 1;
 
   async function loadRandomPokemon() {
-    let randomChoice = getRandomPokemonChoice();
+    let randomChoice = settings.forcedPokemonChoice || getRandomPokemonChoice();
     if (isMultiplayer && lobbyCode) {
       const lobby = getLobbies()[lobbyCode];
       if (lobby?.currentPokemonChoice) randomChoice = lobby.currentPokemonChoice;
@@ -874,7 +1113,7 @@ function setupCanvasPage() {
         generation: isForm ? "bonus" : getGenerationById(data.id),
         isForm
       };
-      pokemonName.textContent = data.name;
+      pokemonName.textContent = formatPokemonName(data.name);
       pokemonImage.crossOrigin = "anonymous";
       pokemonImage.src = data.sprites.other["official-artwork"].front_default || data.sprites.front_default;
       pokemonImage.alt = data.name;
@@ -1020,6 +1259,11 @@ async function setupPokedexPage() {
       if (sort === "za") return b.name.localeCompare(a.name);
       if (sort === "drawnFirst") return Number(bDrawn) - Number(aDrawn) || a.id - b.id;
       if (sort === "missingFirst") return Number(aDrawn) - Number(bDrawn) || a.id - b.id;
+      if (sort === "latestDrawn") {
+        const latestA = Math.max(...(sketches[a.key || String(a.id)]?.drawings || []).map((drawing) => Date.parse(drawing.date) || 0), 0);
+        const latestB = Math.max(...(sketches[b.key || String(b.id)]?.drawings || []).map((drawing) => Date.parse(drawing.date) || 0), 0);
+        return latestB - latestA || Number(bDrawn) - Number(aDrawn) || a.id - b.id;
+      }
       return (a.isForm === b.isForm ? a.id - b.id : a.isForm ? 1 : -1);
     });
 
@@ -1029,9 +1273,13 @@ async function setupPokedexPage() {
       const hasDrawings = drawings.length > 0;
       const gallery = hasDrawings
         ? `<div class="sketch-gallery">${drawings.map((drawing, index) => `
-            <figure>
+            <figure class="sketch-card">
               <img src="${drawing.image}" alt="Sketch of ${pokemon.name}">
-              <figcaption>Sketch ${index + 1}<br>${drawing.date}${drawing.score !== null && drawing.score !== undefined ? `<br>AI Score: ${drawing.score}/100` : ""}</figcaption>
+              <div class="sketch-actions">
+                <button class="sketch-maximize" type="button" data-image="${drawing.image}" data-title="${formatPokemonName(pokemon.name)} sketch ${index + 1}">Maximize</button>
+                <a class="sketch-download" href="${drawing.image}" download="${pokemon.name}-sketch-${index + 1}.png">Download</a>
+              </div>
+              <figcaption>Sketch ${index + 1}<br>${drawing.date}${drawing.score !== null && drawing.score !== undefined ? `<br>Score: ${drawing.score}/100` : ""}</figcaption>
             </figure>`).join("")}</div>`
         : '<p class="empty-gallery">No sketches yet.</p>';
 
@@ -1045,12 +1293,37 @@ async function setupPokedexPage() {
     }).join("");
   }
 
+  pokedexList.addEventListener("click", (event) => {
+    const button = event.target.closest(".sketch-maximize");
+    if (!button) return;
+    let overlay = document.getElementById("sketchLightbox");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "sketchLightbox";
+      overlay.className = "modal-overlay hidden sketch-lightbox";
+      overlay.innerHTML = `
+        <section class="sketch-lightbox-card">
+          <button id="closeSketchLightbox" class="close-button" type="button">×</button>
+          <h2 id="sketchLightboxTitle">Sketch</h2>
+          <img id="sketchLightboxImage" alt="Expanded sketch">
+        </section>`;
+      document.body.appendChild(overlay);
+      overlay.addEventListener("click", (lightboxEvent) => {
+        if (lightboxEvent.target === overlay || lightboxEvent.target.id === "closeSketchLightbox") overlay.classList.add("hidden");
+      });
+    }
+    document.getElementById("sketchLightboxTitle").textContent = button.dataset.title || "Sketch";
+    document.getElementById("sketchLightboxImage").src = button.dataset.image;
+    overlay.classList.remove("hidden");
+  });
+
   [searchInput, filterSelect, generationFilter, sortMode].forEach((element) => {
     element.addEventListener(element.tagName === "INPUT" ? "input" : "change", renderPokedex);
   });
   renderPokedex();
 }
 
+setupDailyChallengeCards();
 setupLoginPage();
 setupCreateAccountPage();
 setupAccountPage();

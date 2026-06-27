@@ -10,8 +10,16 @@
   <a class="back-arrow" href="login.html">&lt;</a>
 
   <div class="account-actions">
-    <button id="newGameBtn" class="new-game-button">NEW GAME</button>
-    <button id="joinGameBtn" class="join-game-button">JOIN GAME</button>
+    <div class="account-button-row">
+      <button id="newGameBtn" class="new-game-button">NEW GAME</button>
+      <button id="joinGameBtn" class="join-game-button">JOIN GAME</button>
+    </div>
+    <aside class="daily-card daily-account-card" aria-live="polite">
+      <span class="daily-kicker">Daily Challenge</span>
+      <img id="dailyAccountImage" class="daily-image" alt="Today's daily Pokémon">
+      <strong id="dailyAccountName">Loading...</strong>
+      <button id="dailyAccountBtn" class="small-button daily-play-button" type="button">PLAY</button>
+    </aside>
   </div>
 
   <main class="account-layout">
@@ -28,6 +36,19 @@
       <p>Pokémon drawn: <span id="drawnCount">xxxx</span>/1025</p>
       <button class="small-button">EDIT PROFILE</button>
       <a class="small-button pokedex-button" href="pokedex.html">POKÉDEX</a>
+
+      <section class="profile-extras">
+        <h2>Stats</h2>
+        <div class="stats-grid">
+          <div><strong id="statRounds">0</strong><span>Rounds</span></div>
+          <div><strong id="statBestScore">--</strong><span>Best Score</span></div>
+          <div><strong id="statAvgScore">--</strong><span>Average</span></div>
+          <div><strong id="statStreak">0</strong><span>Daily Streak</span></div>
+        </div>
+
+        <h2>Achievements</h2>
+        <div id="achievementList" class="achievement-list"></div>
+      </section>
     </section>
   </main>
 
