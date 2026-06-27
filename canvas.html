@@ -9,20 +9,23 @@
 <body class="canvas-page">
   <div class="topbar">
     <h1 id="roundNumber">Round 1</h1>
-    <div class="round-actions">
+
+    <h2 id="pokemonName" class="top-pokemon-name">Loading...</h2>
+
+    <div class="top-right-actions">
       <button id="doneBtn">Done</button>
       <button id="giveUpBtn">Give up?</button>
+      <div class="timer">120</div>
     </div>
-    <div class="timer">120</div>
   </div>
 
   <div class="game">
     <div class="toolbar">
       <button id="brushBtn">Brush</button>
       <button id="eraserBtn">Eraser</button>
-      <button id="fillBtn">Fill Bucket</button>
+      <button id="fillBtn">Fill</button>
 
-      <label>Brush Size</label>
+      <label>Size</label>
       <input type="range" id="size" min="1" max="30" value="5">
 
       <label>Opacity</label>
@@ -40,7 +43,6 @@
 
     <div class="reference">
       <h3>Reference</h3>
-      <h2 id="pokemonName">Loading...</h2>
       <img id="pokemonImage" alt="Pokemon Reference">
     </div>
   </div>
