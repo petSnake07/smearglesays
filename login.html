@@ -13,7 +13,6 @@
       <button class="social-button google-button" type="button">Log in with Google</button>
       <button class="social-button apple-button" type="button">Log in with Apple</button>
     </div>
-    <p class="or-text">OR</p>
 
     <form id="loginForm" class="login-form">
       
@@ -25,17 +24,50 @@
       <input id="password" type="password" autocomplete="current-password">
 
       <label class="remember-row">
+        <button id="forgotPasswordBtn" class="forgot-password-link" type="button">Forgot password?</button>
         <span>Remember me</span>
         <input type="checkbox" id="rememberMe">
       </label>
 
-      
 
       <button class="big-button login-button" type="submit">LOG IN</button>
     </form>
 
     <p class="create-text">Don't have an account? <a href="create_account.html">Create one.</a></p>
   </main>
+
+  <div id="forgotOverlay" class="modal-overlay hidden">
+    <section class="forgot-modal">
+      <button id="closeForgotBtn" class="close-button" type="button">×</button>
+      <h2>Reset Password</h2>
+      <p class="forgot-help">Enter the username and email from your account.</p>
+
+      <label for="forgotUsername">Username</label>
+      <input id="forgotUsername" type="text" autocomplete="username" placeholder="Username">
+
+      <label for="forgotEmail">Email</label>
+      <input id="forgotEmail" type="email" autocomplete="email" placeholder="you@example.com">
+
+      <p id="forgotMessage" class="form-error"></p>
+      <button id="sendResetBtn" class="small-button" type="button">SEND RESET LINK</button>
+    </section>
+  </div>
+
+  <div id="resetOverlay" class="modal-overlay hidden">
+    <section class="forgot-modal">
+      <h2>Choose New Password</h2>
+      <p class="forgot-help">Your reset link is valid for this browser.</p>
+
+      <label for="resetPassword">New password</label>
+      <input id="resetPassword" type="password" autocomplete="new-password">
+
+      <label for="resetConfirmPassword">Confirm password</label>
+      <input id="resetConfirmPassword" type="password" autocomplete="new-password">
+
+      <p id="resetMessage" class="form-error"></p>
+      <button id="finishResetBtn" class="small-button" type="button">RESET PASSWORD</button>
+    </section>
+  </div>
   <script src="script.js"></script>
 </body>
 </html>

@@ -293,6 +293,21 @@ function setupLoginPage() {
   const loginForm = document.getElementById("loginForm");
   if (!loginForm) return;
 
+  const forgotOverlay = document.getElementById("forgotOverlay");
+  const resetOverlay = document.getElementById("resetOverlay");
+  const forgotBtn = document.getElementById("forgotPasswordBtn");
+  const closeForgotBtn = document.getElementById("closeForgotBtn");
+  const sendResetBtn = document.getElementById("sendResetBtn");
+  const finishResetBtn = document.getElementById("finishResetBtn");
+
+  function getResetTokens() {
+    return JSON.parse(localStorage.getItem("pokedrawResetTokens") || "{}");
+  }
+
+  function saveResetTokens(tokens) {
+    localStorage.setItem("pokedrawResetTokens", JSON.stringify(tokens));
+  }
+
   loginForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const username = document.getElementById("username").value.trim();
@@ -308,6 +323,87 @@ function setupLoginPage() {
     localStorage.setItem("pokedrawUsername", username);
     window.location.href = "account.html";
   });
+
+  forgotBtn?.addEventListener("click", () => {
+    document.getElementById("forgotMessage").textContent = "";
+    forgotOverlay?.classList.remove("hidden");
+  });
+
+  closeForgotBtn?.addEventListener("click", () => forgotOverlay?.classList.add("hidden"));
+  forgotOverlay?.addEventListener("click", (event) => {
+    if (event.target === forgotOverlay) forgotOverlay.classList.add("hidden");
+  });
+
+  sendResetBtn?.addEventListener("click", () => {
+    const username = document.getElementById("forgotUsername").value.trim();
+    const email = document.getElementById("forgotEmail").value.trim().toLowerCase();
+    const message = document.getElementById("forgotMessage");
+    const accounts = getAccounts();
+    const account = accounts[username];
+
+    if (!username || !email) {
+      message.textContent = "Please enter both your username and email.";
+      return;
+    }
+
+    if (!account || String(account.email || "").toLowerCase() !== email) {
+      message.textContent = "The email is not associated with that username.";
+      return;
+    }
+
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const tokens = getResetTokens();
+    tokens[token] = {
+      username,
+      expiresAt: Date.now() + 1000 * 60 * 30
+    };
+    saveResetTokens(tokens);
+
+    const resetLink = `${window.location.origin}${window.location.pathname}?reset=${encodeURIComponent(token)}`;
+    const mailto = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent("Smeargle Says password reset")}&body=${encodeURIComponent(`Use this link to reset your Smeargle Says password:\n\n${resetLink}\n\nThis demo reset link works in this browser for 30 minutes.`)}`;
+
+    message.innerHTML = `Reset link created for <strong>${email}</strong>.<br><a href="${mailto}">Open email draft</a> or <a href="${resetLink}">reset now</a>.`;
+  });
+
+  const resetToken = new URLSearchParams(window.location.search).get("reset");
+  if (resetToken && resetOverlay) {
+    resetOverlay.classList.remove("hidden");
+  }
+
+  finishResetBtn?.addEventListener("click", () => {
+    const message = document.getElementById("resetMessage");
+    const password = document.getElementById("resetPassword").value;
+    const confirmPassword = document.getElementById("resetConfirmPassword").value;
+    const tokens = getResetTokens();
+    const reset = tokens[resetToken];
+
+    if (!reset || reset.expiresAt < Date.now()) {
+      message.textContent = "This reset link is invalid or expired.";
+      return;
+    }
+    if (password.length < 8) {
+      message.textContent = "Password must be at least 8 characters.";
+      return;
+    }
+    if (password !== confirmPassword) {
+      message.textContent = "Passwords do not match.";
+      return;
+    }
+
+    const accounts = getAccounts();
+    if (!accounts[reset.username]) {
+      message.textContent = "Account not found.";
+      return;
+    }
+
+    accounts[reset.username].password = password;
+    saveAccounts(accounts);
+    delete tokens[resetToken];
+    saveResetTokens(tokens);
+    localStorage.setItem("pokedrawUsername", reset.username);
+    message.textContent = "Password reset! Redirecting...";
+    setTimeout(() => window.location.href = "account.html", 900);
+  });
 }
 
 function setupCreateAccountPage() {
@@ -317,6 +413,7 @@ function setupCreateAccountPage() {
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     const username = document.getElementById("newUsername").value.trim();
+    const email = document.getElementById("newEmail").value.trim().toLowerCase();
     const password = document.getElementById("newPassword").value;
     const confirmPassword = document.getElementById("confirmPassword").value;
     const captcha = document.getElementById("captchaCheck").checked;
@@ -325,6 +422,14 @@ function setupCreateAccountPage() {
 
     if (!username) {
       error.textContent = "Please enter a username.";
+      return;
+    }
+    if (!email || !email.includes("@")) {
+      error.textContent = "Please enter a valid email address.";
+      return;
+    }
+    if (Object.values(accounts).some((account) => String(account.email || "").toLowerCase() === email)) {
+      error.textContent = "That email is already being used.";
       return;
     }
     if (accounts[username]) {
@@ -346,6 +451,7 @@ function setupCreateAccountPage() {
 
     accounts[username] = {
       username,
+      email,
       password,
       createdAt: new Date().toISOString(),
       avatar: ""

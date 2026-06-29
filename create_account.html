@@ -6,15 +6,17 @@
   <title>Create Account | Smeargle Says</title>
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="center-page login-page">
+<body class="center-page login-page create-account-page">
+  <a class="back-arrow auth-back-arrow" href="login.html">&lt;</a>
   <main class="login-card compact-card">
-    <a class="back-mini" href="login.html">&lt; Back</a>
-    <h1 class="page-title">Create Account</h1>
     <form id="createAccountForm" class="login-form">
       <p id="createError" class="form-error"></p>
 
       <label for="newUsername">Username</label>
       <input id="newUsername" type="text" autocomplete="username" required>
+
+      <label for="newEmail">Email</label>
+      <input id="newEmail" type="email" autocomplete="email" required>
 
       <label for="newPassword">Password</label>
       <input id="newPassword" type="password" autocomplete="new-password" required>
