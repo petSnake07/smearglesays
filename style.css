@@ -1686,3 +1686,154 @@ canvas {
   font-weight: 900;
 }
 
+
+/* Mobile / Android drawing fixes */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body.canvas-page {
+  overscroll-behavior: none;
+}
+
+.canvas-container,
+.canvas-container canvas,
+#canvas {
+  touch-action: none;
+  -ms-touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#canvas {
+  display: block;
+  max-width: 100%;
+}
+
+@media (max-width: 760px) {
+  body.canvas-page {
+    min-height: 100svh;
+    overflow-x: hidden;
+  }
+
+  .canvas-page .topbar,
+  .topbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 14px 14px 8px;
+  }
+
+  .topbar h1 {
+    font-size: 28px;
+    text-align: center;
+  }
+
+  .top-pokemon-name {
+    font-size: 32px;
+    line-height: 1;
+  }
+
+  .top-right-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    width: 100%;
+    gap: 8px;
+  }
+
+  #doneBtn,
+  #giveUpBtn {
+    width: 100%;
+    padding: 8px 10px;
+    font-size: 16px;
+  }
+
+  .timer {
+    width: 58px;
+    height: 58px;
+    font-size: 24px;
+  }
+
+  .game {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 8px 12px 24px;
+  }
+
+  .toolbar {
+    order: 1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(72px, 1fr));
+    gap: 8px;
+    padding: 10px;
+    align-items: center;
+  }
+
+  .toolbar label {
+    font-size: 13px;
+    margin: 0;
+  }
+
+  .toolbar input[type="range"],
+  .toolbar input[type="color"] {
+    width: 100%;
+  }
+
+  .toolbar button {
+    min-height: 42px;
+    padding: 7px 8px;
+    font-size: 14px;
+  }
+
+  .undo-redo-row {
+    grid-column: span 1;
+  }
+
+  .canvas-container {
+    order: 2;
+    padding: 8px;
+    border-width: 3px;
+  }
+
+  canvas,
+  #canvas {
+    width: 100%;
+    height: min(62svh, 520px);
+    min-height: 360px;
+    background: #ffffff;
+  }
+
+  .reference {
+    order: 3;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 12px;
+    align-items: center;
+    padding: 10px 12px;
+  }
+
+  .reference h3 {
+    margin: 0;
+    font-size: 20px;
+  }
+
+  .reference img {
+    justify-self: end;
+    width: 110px;
+    min-height: 0;
+    padding: 4px;
+  }
+}
+
+@media (max-width: 430px) {
+  .toolbar {
+    grid-template-columns: repeat(3, minmax(70px, 1fr));
+  }
+
+  canvas,
+  #canvas {
+    height: 58svh;
+    min-height: 320px;
+  }
+}

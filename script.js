@@ -872,6 +872,8 @@ function setupCanvasPage() {
   }
 
   function startDrawing(event) {
+    event.preventDefault();
+    canvas.setPointerCapture?.(event.pointerId);
     if (settings.gameMode === "guessing" && !amArtist()) return;
     const position = getPointerPosition(event);
     if (activeTool === "fill") {
@@ -885,7 +887,9 @@ function setupCanvasPage() {
     draw(event);
   }
 
-  function stopDrawing() {
+  function stopDrawing(event) {
+    event?.preventDefault?.();
+    if (event?.pointerId !== undefined) canvas.releasePointerCapture?.(event.pointerId);
     drawing = false;
     ctx.beginPath();
     broadcastCanvasSnapshot();
@@ -893,6 +897,7 @@ function setupCanvasPage() {
 
   function draw(event) {
     if (!drawing || activeTool === "fill") return;
+    event.preventDefault();
     const position = getPointerPosition(event);
     ctx.lineWidth = brushSize;
     ctx.lineCap = "round";
@@ -1159,10 +1164,11 @@ function setupCanvasPage() {
     };
   }
 
-  canvas.addEventListener("pointerdown", startDrawing);
-  canvas.addEventListener("pointerup", stopDrawing);
-  canvas.addEventListener("pointerleave", stopDrawing);
-  canvas.addEventListener("pointermove", draw);
+  canvas.addEventListener("pointerdown", startDrawing, { passive: false });
+  canvas.addEventListener("pointerup", stopDrawing, { passive: false });
+  canvas.addEventListener("pointercancel", stopDrawing, { passive: false });
+  canvas.addEventListener("pointerleave", stopDrawing, { passive: false });
+  canvas.addEventListener("pointermove", draw, { passive: false });
 
   document.getElementById("color").addEventListener("change", (event) => brushColor = event.target.value);
   document.getElementById("size").addEventListener("change", (event) => brushSize = Number(event.target.value));
