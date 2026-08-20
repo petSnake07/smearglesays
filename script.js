@@ -1441,3 +1441,42 @@ setupCreateAccountPage();
 setupAccountPage();
 setupCanvasPage();
 setupPokedexPage();
+
+/* ---------- iOS Home Screen / PWA support ---------- */
+function setupInstallableApp() {
+  if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./service-worker.js").catch((error) => {
+        console.warn("Service worker registration failed:", error);
+      });
+    });
+  }
+
+  const userAgent = navigator.userAgent || "";
+  const isIOS = /iPad|iPhone|iPod/.test(userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const isStandalone = window.matchMedia?.("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  const dismissed = localStorage.getItem("smeargleIosInstallTipDismissed") === "1";
+
+  if (!isIOS || isStandalone || dismissed || document.querySelector(".ios-install-tip")) return;
+
+  const tip = document.createElement("aside");
+  tip.className = "ios-install-tip";
+  tip.setAttribute("role", "status");
+  tip.innerHTML = `
+    <img src="apple-touch-icon.png" alt="">
+    <div class="ios-install-copy">
+      <strong>Add Smeargle Says to Home Screen</strong>
+      In Safari, tap <span class="share-glyph">Share ⤴</span>, then <b>Add to Home Screen</b> for an app-like fullscreen experience.
+    </div>
+    <button class="ios-install-close" type="button" aria-label="Dismiss install tip">×</button>
+  `;
+
+  tip.querySelector(".ios-install-close")?.addEventListener("click", () => {
+    localStorage.setItem("smeargleIosInstallTipDismissed", "1");
+    tip.remove();
+  });
+
+  document.body.appendChild(tip);
+}
+
+setupInstallableApp();
