@@ -1,3 +1,14 @@
+import {
+  auth,
+  GoogleAuthProvider,
+  OAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+  onAuthStateChanged,
+  signOut
+} from "./firebase.js";
+
 const GEN_RANGES = {
   1: [1, 151],
   2: [152, 251],
@@ -289,9 +300,113 @@ function guessMatchesAnswer(guess, answer) {
   return keywords.length > 0 && keywords.every((word) => guessText.includes(word));
 }
 
+
+function makeFirebaseLocalUsername(user) {
+  const mappingKey = `pokedrawFirebaseUsername_${user.uid}`;
+  const existing = localStorage.getItem(mappingKey);
+  if (existing) return existing;
+
+  const accounts = getAccounts();
+  const raw = String(user.displayName || user.email?.split("@")[0] || "Trainer").trim() || "Trainer";
+  const base = raw.replace(/[^a-zA-Z0-9 _.-]/g, "").slice(0, 24) || "Trainer";
+  let candidate = base;
+  let suffix = 2;
+
+  while (accounts[candidate] && accounts[candidate].firebaseUid !== user.uid) {
+    candidate = `${base}${suffix}`;
+    suffix += 1;
+  }
+
+  localStorage.setItem(mappingKey, candidate);
+  return candidate;
+}
+
+function syncFirebaseUserToLocalProfile(user) {
+  if (!user) return null;
+
+  const username = makeFirebaseLocalUsername(user);
+  const accounts = getAccounts();
+  const old = accounts[username] || {};
+
+  accounts[username] = {
+    ...old,
+    username,
+    email: user.email || old.email || "",
+    password: old.password || "",
+    createdAt: old.createdAt || user.metadata?.creationTime || new Date().toISOString(),
+    avatar: old.avatar || user.photoURL || "",
+    firebaseUid: user.uid,
+    firebaseProvider: user.providerData?.[0]?.providerId || "firebase"
+  };
+
+  saveAccounts(accounts);
+  localStorage.setItem("pokedrawUsername", username);
+  localStorage.setItem("pokedrawFirebaseUid", user.uid);
+  return username;
+}
+
+function isMobileAuthDevice() {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+async function signInWithFirebaseProvider(provider, errorElement) {
+  try {
+    if (isMobileAuthDevice()) {
+      await signInWithRedirect(auth, provider);
+      return;
+    }
+
+    const result = await signInWithPopup(auth, provider);
+    syncFirebaseUserToLocalProfile(result.user);
+    window.location.href = "account.html";
+  } catch (error) {
+    console.error("Firebase sign-in failed:", error);
+    if (!errorElement) return;
+
+    if (error?.code === "auth/operation-not-allowed") {
+      errorElement.textContent = "That sign-in provider has not been enabled in Firebase yet.";
+    } else if (error?.code === "auth/popup-closed-by-user") {
+      errorElement.textContent = "Sign-in was canceled.";
+    } else if (error?.code === "auth/unauthorized-domain") {
+      errorElement.textContent = "This website domain is not authorized in Firebase Authentication.";
+    } else {
+      errorElement.textContent = "Sign-in failed. Please try again.";
+    }
+  }
+}
+
 function setupLoginPage() {
   const loginForm = document.getElementById("loginForm");
   if (!loginForm) return;
+
+  const loginError = document.getElementById("loginError");
+  const googleButton = document.querySelector(".google-button");
+  const appleButton = document.querySelector(".apple-button");
+
+  googleButton?.addEventListener("click", () => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+    signInWithFirebaseProvider(provider, loginError);
+  });
+
+  appleButton?.addEventListener("click", () => {
+    const provider = new OAuthProvider("apple.com");
+    provider.addScope("email");
+    provider.addScope("name");
+    signInWithFirebaseProvider(provider, loginError);
+  });
+
+  getRedirectResult(auth)
+    .then((result) => {
+      if (!result?.user) return;
+      syncFirebaseUserToLocalProfile(result.user);
+      window.location.href = "account.html";
+    })
+    .catch((error) => {
+      console.error("Firebase redirect sign-in failed:", error);
+      if (loginError) loginError.textContent = "Sign-in failed. Please try again.";
+    });
 
   const forgotOverlay = document.getElementById("forgotOverlay");
   const resetOverlay = document.getElementById("resetOverlay");
@@ -1446,9 +1561,11 @@ setupPokedexPage();
 function setupInstallableApp() {
   if ("serviceWorker" in navigator && window.location.protocol.startsWith("http")) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js").catch((error) => {
-        console.warn("Service worker registration failed:", error);
-      });
+      navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" })
+        .then((registration) => registration.update())
+        .catch((error) => {
+          console.warn("Service worker registration failed:", error);
+        });
     });
   }
 
