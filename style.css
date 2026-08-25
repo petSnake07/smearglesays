@@ -1934,3 +1934,333 @@ body {
     bottom: calc(10px + env(safe-area-inset-bottom));
   }
 }
+
+
+/* Daily Challenge community gallery */
+.daily-card-actions {
+  grid-area: button;
+  display: grid;
+  gap: 6px;
+  justify-items: stretch;
+}
+
+.daily-card-actions .daily-play-button {
+  grid-area: auto;
+}
+
+.daily-gallery-link {
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
+  text-decoration: none;
+  letter-spacing: .02em;
+}
+
+.daily-gallery-link:hover {
+  text-decoration: underline;
+}
+
+.daily-gallery-page {
+  min-height: 100svh;
+  padding: 72px 24px 80px;
+  background-image: url("background.png");
+  background-repeat: repeat;
+  background-size: 700px auto;
+  background-position: center top;
+  color: var(--ink);
+}
+
+.daily-gallery-shell {
+  width: min(1120px, 94vw);
+  margin: 0 auto;
+}
+
+.daily-gallery-header {
+  width: min(760px, 100%);
+  margin: 0 auto 26px;
+  padding: 20px 24px;
+  border: 4px solid var(--ink);
+  border-radius: 24px 19px 26px 20px;
+  background: rgba(255, 253, 247, .95);
+  box-shadow: 6px 7px 0 var(--shadow);
+  text-align: center;
+}
+
+.daily-gallery-kicker {
+  margin: 0 0 2px;
+  color: var(--green);
+  font-size: 15px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+
+.daily-gallery-header h1 {
+  margin: 0 0 6px;
+  font-size: clamp(32px, 5vw, 52px);
+  line-height: 1;
+}
+
+.daily-gallery-header > p:not(.daily-gallery-kicker) {
+  margin: 8px auto 16px;
+  max-width: 650px;
+  font-size: 17px;
+}
+
+.daily-gallery-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.gallery-tab {
+  padding: 9px 16px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: white;
+  color: var(--ink);
+  box-shadow: 3px 4px 0 var(--shadow);
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.gallery-tab.active {
+  background: var(--green);
+  transform: translateY(2px);
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+
+.gallery-auth-note {
+  width: min(760px, 100%);
+  margin: 0 auto 18px;
+  padding: 10px 14px;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  background: #fff7d9;
+  text-align: center;
+  font-size: 15px;
+}
+
+.daily-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.daily-community-card {
+  position: relative;
+  overflow: hidden;
+  border: 4px solid var(--ink);
+  border-radius: 22px 17px 24px 18px;
+  background: rgba(255, 253, 247, .97);
+  box-shadow: 5px 6px 0 var(--shadow);
+}
+
+.community-rank {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  left: 10px;
+  min-width: 42px;
+  padding: 5px 8px;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 2px 3px 0 var(--shadow);
+  font-size: 16px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.community-image-button {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.community-image-button img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 7 / 5;
+  object-fit: contain;
+  background: white;
+  transition: transform .16s ease;
+}
+
+.community-image-button:hover img {
+  transform: scale(1.025);
+}
+
+.community-card-copy {
+  padding: 13px 14px 15px;
+  border-top: 3px solid var(--ink);
+}
+
+.community-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.community-title-row > div:first-child {
+  min-width: 0;
+}
+
+.community-title-row strong,
+.community-title-row span {
+  display: block;
+}
+
+.community-title-row strong {
+  font-size: 21px;
+  overflow-wrap: anywhere;
+}
+
+.community-title-row span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.community-rating {
+  flex: 0 0 auto;
+  text-align: right;
+  line-height: 1;
+}
+
+.community-rating b {
+  font-size: 28px;
+}
+
+.community-rating > span {
+  display: inline;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.community-rating small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rating-picker {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.rating-number {
+  min-width: 0;
+  padding: 6px 1px;
+  border: 2px solid var(--ink);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.rating-number:hover,
+.rating-number.selected {
+  background: var(--green);
+  transform: translateY(-1px);
+}
+
+.gallery-readonly-note {
+  margin-top: 12px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: rgba(0,0,0,.055);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.gallery-loading,
+.gallery-empty {
+  grid-column: 1 / -1;
+  padding: 30px;
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  background: rgba(255,253,247,.95);
+  text-align: center;
+}
+
+.gallery-empty h2 {
+  margin: 0 0 6px;
+}
+
+.daily-image-modal {
+  position: relative;
+  width: min(880px, 92vw);
+  max-height: 90svh;
+  padding: 18px;
+  border: 4px solid var(--ink);
+  border-radius: 22px;
+  background: #fffdf7;
+  box-shadow: 7px 8px 0 var(--shadow);
+  overflow: auto;
+}
+
+.daily-image-modal > img {
+  display: block;
+  width: 100%;
+  max-height: 72svh;
+  object-fit: contain;
+  border: 3px solid var(--ink);
+  background: white;
+}
+
+#dailyImageCaption {
+  padding: 12px 4px 0;
+  font-size: 18px;
+  text-align: center;
+}
+
+.daily-image-modal .close-button {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
+}
+
+@media (max-width: 620px) {
+  .daily-gallery-page {
+    padding: max(66px, calc(env(safe-area-inset-top) + 54px)) 12px max(34px, calc(env(safe-area-inset-bottom) + 20px));
+  }
+
+  .daily-gallery-shell {
+    width: 100%;
+  }
+
+  .daily-gallery-header {
+    padding: 16px 12px;
+  }
+
+  .daily-gallery-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .rating-picker {
+    gap: 3px;
+  }
+
+  .rating-number {
+    min-height: 34px;
+    font-size: 11px;
+  }
+}

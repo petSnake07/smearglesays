@@ -1,4 +1,4 @@
-const CACHE_NAME = "smeargle-says-v3-network-first";
+const CACHE_NAME = "smeargle-says-v4-daily-gallery";
 
 const APP_SHELL = [
   "./",
@@ -8,6 +8,7 @@ const APP_SHELL = [
   "./account.html",
   "./canvas.html",
   "./pokedex.html",
+  "./daily-gallery.html",
   "./style.css",
   "./script.js",
   "./firebase.js",

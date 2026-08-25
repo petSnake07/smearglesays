@@ -1,5 +1,12 @@
 import {
   auth,
+  db,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  runTransaction,
+  serverTimestamp,
   GoogleAuthProvider,
   OAuthProvider,
   signInWithPopup,
@@ -248,6 +255,250 @@ async function setupDailyChallengeCards() {
     element.alt = name;
   });
   document.querySelectorAll("#dailyHomeBtn, #dailyAccountBtn").forEach((button) => button.addEventListener("click", startDailyChallenge));
+}
+
+
+function makeDailyCommunityImage(sourceCanvas) {
+  const maxWidth = 560;
+  const maxHeight = 400;
+  const ratio = Math.min(maxWidth / sourceCanvas.width, maxHeight / sourceCanvas.height, 1);
+  const width = Math.max(1, Math.round(sourceCanvas.width * ratio));
+  const height = Math.max(1, Math.round(sourceCanvas.height * ratio));
+  const shareCanvas = document.createElement("canvas");
+  shareCanvas.width = width;
+  shareCanvas.height = height;
+  const shareCtx = shareCanvas.getContext("2d");
+  shareCtx.fillStyle = "#ffffff";
+  shareCtx.fillRect(0, 0, width, height);
+  shareCtx.drawImage(sourceCanvas, 0, 0, width, height);
+  return shareCanvas.toDataURL("image/jpeg", 0.78);
+}
+
+async function publishDailyChallengeDrawing({ canvas, pokemon, scoreResult }) {
+  const user = auth.currentUser;
+  if (!user || !pokemon || !canvas) return { published: false, reason: "auth" };
+
+  const date = todayKey();
+  const drawingId = `${date}_${user.uid}`;
+  const drawingRef = doc(db, "dailyDrawings", drawingId);
+  const image = makeDailyCommunityImage(canvas);
+  const displayName = getUsername() !== "Guest"
+    ? getUsername()
+    : (user.displayName || user.email?.split("@")[0] || "Trainer");
+
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(drawingRef);
+    const common = {
+      ownerUid: user.uid,
+      ownerName: displayName,
+      ownerPhoto: user.photoURL || "",
+      date,
+      pokemonId: pokemon.id,
+      pokemonName: pokemon.name,
+      image,
+      aiScore: scoreResult?.score ?? null,
+      updatedAt: serverTimestamp()
+    };
+
+    if (snapshot.exists()) transaction.update(drawingRef, common);
+    else transaction.set(drawingRef, { ...common, createdAt: serverTimestamp() });
+  });
+
+  return { published: true, drawingId };
+}
+
+async function rateDailyDrawing(drawingId, score) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("SIGN_IN_REQUIRED");
+  const ratingValue = Math.max(1, Math.min(10, Number(score)));
+  const drawingRef = doc(db, "dailyDrawings", drawingId);
+  const ratingRef = doc(db, "dailyDrawings", drawingId, "ratings", user.uid);
+
+  await runTransaction(db, async (transaction) => {
+    const drawingSnap = await transaction.get(drawingRef);
+    if (!drawingSnap.exists()) throw new Error("DRAWING_NOT_FOUND");
+    if (drawingSnap.data().ownerUid === user.uid) throw new Error("OWN_DRAWING");
+    transaction.set(ratingRef, {
+      score: ratingValue,
+      voterUid: user.uid,
+      updatedAt: serverTimestamp()
+    });
+  });
+}
+
+async function setupDailyGalleryPage() {
+  const grid = document.getElementById("dailyGalleryGrid");
+  if (!grid) return;
+
+  const todayTab = document.getElementById("todayGalleryTab");
+  const portfolioTab = document.getElementById("portfolioGalleryTab");
+  const subtitle = document.getElementById("dailyGallerySubtitle");
+  const authNote = document.getElementById("galleryAuthNote");
+  const imageOverlay = document.getElementById("dailyImageOverlay");
+  const imageLarge = document.getElementById("dailyImageLarge");
+  const imageCaption = document.getElementById("dailyImageCaption");
+  const closeImage = document.getElementById("closeDailyImageBtn");
+  let mode = "today";
+  let drawings = [];
+  let myRatings = new Map();
+
+  function rankingSort(a, b) {
+    return Number(b.averageRating || 0) - Number(a.averageRating || 0)
+      || Number(b.ratingCount || 0) - Number(a.ratingCount || 0)
+      || String(b.date || "").localeCompare(String(a.date || ""));
+  }
+
+  async function loadRatingStats(items) {
+    myRatings = new Map();
+    const user = auth.currentUser;
+    await Promise.all(items.map(async (item) => {
+      try {
+        const ratingsSnap = await getDocs(collection(db, "dailyDrawings", item.id, "ratings"));
+        let sum = 0;
+        let count = 0;
+        ratingsSnap.forEach((ratingDoc) => {
+          const score = Number(ratingDoc.data().score || 0);
+          if (score >= 1 && score <= 10) {
+            sum += score;
+            count += 1;
+          }
+          if (user && ratingDoc.id === user.uid) myRatings.set(item.id, score);
+        });
+        item.ratingSum = sum;
+        item.ratingCount = count;
+        item.averageRating = count ? Number((sum / count).toFixed(2)) : 0;
+      } catch (error) {
+        console.warn("Could not load ratings", error);
+        item.ratingSum = 0;
+        item.ratingCount = 0;
+        item.averageRating = 0;
+      }
+    }));
+  }
+
+  function ratingButtons(item) {
+    const user = auth.currentUser;
+    if (mode !== "today") return '<div class="gallery-readonly-note">All-time portfolio</div>';
+    if (!user) return '<div class="gallery-readonly-note">Sign in to rate</div>';
+    if (item.ownerUid === user.uid) return '<div class="gallery-readonly-note">Your drawing</div>';
+    const selected = myRatings.get(item.id) || 0;
+    return `<div class="rating-picker" data-drawing-id="${item.id}" aria-label="Rate this drawing out of 10">
+      ${Array.from({ length: 10 }, (_, index) => {
+        const value = index + 1;
+        return `<button type="button" class="rating-number ${selected === value ? "selected" : ""}" data-rating="${value}" aria-label="Rate ${value} out of 10">${value}</button>`;
+      }).join("")}
+    </div>`;
+  }
+
+  function render() {
+    const visible = drawings
+      .filter((item) => mode === "today" ? item.date === todayKey() : Number(item.ratingCount || 0) > 0)
+      .sort(rankingSort)
+      .slice(0, mode === "today" ? 100 : 60);
+
+    if (!visible.length) {
+      grid.innerHTML = `<div class="gallery-empty"><h2>${mode === "today" ? "No drawings yet" : "Portfolio coming soon"}</h2><p>${mode === "today" ? "Complete today's challenge and be the first artist on the board." : "Top-rated daily challenge drawings will collect here over time."}</p></div>`;
+      return;
+    }
+
+    grid.innerHTML = visible.map((item, index) => {
+      const avg = Number(item.averageRating || 0);
+      const count = Number(item.ratingCount || 0);
+      return `<article class="daily-community-card" data-drawing-id="${item.id}">
+        <div class="community-rank">#${index + 1}</div>
+        <button class="community-image-button" type="button" aria-label="Maximize ${item.ownerName || "artist"}'s drawing">
+          <img src="${item.image}" alt="Daily challenge drawing by ${item.ownerName || "Trainer"}">
+        </button>
+        <div class="community-card-copy">
+          <div class="community-title-row">
+            <div>
+              <strong>${item.ownerName || "Trainer"}</strong>
+              <span>${formatPokemonName(item.pokemonName || "Daily Pokémon")}${mode === "today" ? "" : ` · ${item.date || ""}`}</span>
+            </div>
+            <div class="community-rating"><b>${avg ? avg.toFixed(1) : "—"}</b><span>/10</span><small>${count} rating${count === 1 ? "" : "s"}</small></div>
+          </div>
+          ${ratingButtons(item)}
+        </div>
+      </article>`;
+    }).join("");
+
+    grid.querySelectorAll(".community-image-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const card = button.closest(".daily-community-card");
+        const item = drawings.find((entry) => entry.id === card?.dataset.drawingId);
+        if (!item) return;
+        imageLarge.src = item.image;
+        imageLarge.alt = `Drawing by ${item.ownerName || "Trainer"}`;
+        imageCaption.innerHTML = `<strong>${item.ownerName || "Trainer"}</strong> · ${formatPokemonName(item.pokemonName || "Daily Pokémon")} · ${Number(item.averageRating || 0).toFixed(1)}/10`;
+        imageOverlay?.classList.remove("hidden");
+      });
+    });
+
+    grid.querySelectorAll(".rating-number").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const picker = button.closest(".rating-picker");
+        const drawingId = picker?.dataset.drawingId;
+        if (!drawingId) return;
+        const value = Number(button.dataset.rating);
+        picker.querySelectorAll("button").forEach((node) => node.disabled = true);
+        try {
+          await rateDailyDrawing(drawingId, value);
+          myRatings.set(drawingId, value);
+          const updatedItem = drawings.find((entry) => entry.id === drawingId);
+          if (updatedItem) await loadRatingStats([updatedItem]);
+          render();
+        } catch (error) {
+          console.error(error);
+          if (error.message === "SIGN_IN_REQUIRED") alert("Sign in with Google or Apple to rate drawings.");
+          else if (error.message === "OWN_DRAWING") alert("You can't rate your own drawing.");
+          else alert("Your rating could not be saved. Check Firebase permissions and try again.");
+          picker.querySelectorAll("button").forEach((node) => node.disabled = false);
+        }
+      });
+    });
+  }
+
+  async function refresh() {
+    grid.innerHTML = '<p class="gallery-loading">Loading community drawings...</p>';
+    try {
+      const snapshot = await getDocs(collection(db, "dailyDrawings"));
+      drawings = snapshot.docs.map((entry) => ({ id: entry.id, ...entry.data() }));
+      await loadRatingStats(drawings);
+      render();
+    } catch (error) {
+      console.error(error);
+      grid.innerHTML = '<div class="gallery-empty"><h2>Gallery unavailable</h2><p>Firestore is not configured yet, or the connection could not be reached.</p></div>';
+    }
+  }
+
+  function setMode(nextMode) {
+    mode = nextMode;
+    todayTab?.classList.toggle("active", mode === "today");
+    portfolioTab?.classList.toggle("active", mode === "portfolio");
+    subtitle.textContent = mode === "today"
+      ? "See today's sketches, rate other artists out of 10, and help the favorites rise to the top."
+      : "A universal portfolio of the highest-rated Daily Challenge drawings from every day.";
+    render();
+  }
+
+  todayTab?.addEventListener("click", () => setMode("today"));
+  portfolioTab?.addEventListener("click", () => setMode("portfolio"));
+  closeImage?.addEventListener("click", () => imageOverlay?.classList.add("hidden"));
+  imageOverlay?.addEventListener("click", (event) => {
+    if (event.target === imageOverlay) imageOverlay.classList.add("hidden");
+  });
+
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      authNote.classList.remove("hidden");
+      authNote.innerHTML = 'You can browse every drawing. <a href="login.html">Sign in</a> to rate other artists and publish your own Daily Challenge entry.';
+    } else {
+      authNote.classList.add("hidden");
+    }
+    loadRatingStats(drawings).then(render);
+  });
+
+  await refresh();
 }
 
 function getGameSettings() {
@@ -783,6 +1034,7 @@ function setupCanvasPage() {
   const eraserBtn = document.getElementById("eraserBtn");
 
   const settings = getGameSettings();
+  let dailyPublishPromise = Promise.resolve({ published: false });
   const lobbyCode = sessionStorage.getItem("pokedrawLobbyCode") || settings.lobbyCode || "";
   const playerName = getPlayerName();
   const isMultiplayer = settings.gameMode && settings.gameMode !== "solo";
@@ -1241,7 +1493,15 @@ function setupCanvasPage() {
       ${makeScoreBar("Detail", breakdown.detail)}
     `;
     modal.classList.remove("hidden");
-    document.getElementById("scoreContinueBtn").onclick = () => {
+    const continueBtn = document.getElementById("scoreContinueBtn");
+    if (settings.dailyChallenge) continueBtn.textContent = "View Daily Gallery";
+    continueBtn.onclick = async () => {
+      continueBtn.disabled = true;
+      if (settings.dailyChallenge) {
+        try { await dailyPublishPromise; } catch (error) { console.error(error); }
+        window.location.href = "daily-gallery.html";
+        return;
+      }
       modal.classList.add("hidden");
       advanceRoundAfterDone();
     };
@@ -1383,7 +1643,17 @@ function setupCanvasPage() {
     if (shouldSave) {
       clearInterval(timerInterval);
       const scoreResult = scoreCurrentDrawing();
-      saveCurrentDrawing(scoreResult);
+      const savedDrawing = saveCurrentDrawing(scoreResult);
+      if (settings.dailyChallenge && savedDrawing) {
+        dailyPublishPromise = publishDailyChallengeDrawing({
+          canvas,
+          pokemon: currentPokemon,
+          scoreResult
+        }).catch((error) => {
+          console.error("Daily Challenge publish failed:", error);
+          return { published: false, reason: "error" };
+        });
+      }
       showScoreThenContinue(scoreResult);
       return;
     }
@@ -1551,6 +1821,7 @@ async function setupPokedexPage() {
 }
 
 setupDailyChallengeCards();
+setupDailyGalleryPage();
 setupLoginPage();
 setupCreateAccountPage();
 setupAccountPage();

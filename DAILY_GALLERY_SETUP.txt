@@ -1,0 +1,15 @@
+DAILY CHALLENGE COMMUNITY SETUP
+
+1. Firebase Console > Build > Firestore Database > Create database.
+2. In Firestore > Rules, replace the rules with the contents of firestore.rules, then Publish.
+3. Firebase Console > Authentication > Settings > Authorized domains: make sure smearglesays.com is present.
+4. Google/Apple-authenticated users can publish Daily Challenge entries and rate other users. Browsing is public.
+5. Upload all of these site files to GitHub Pages, including daily-gallery.html and the updated service-worker.js.
+
+NOTES
+- Each signed-in user gets one community Daily Challenge submission per calendar day. Replaying the challenge updates that day's image without erasing existing ratings.
+- Ratings are 1-10. A user can change their rating. The page calculates averages from individual rating documents so nobody can forge the public score by editing an aggregate field.
+- Users cannot rate their own drawing.
+- Today's page is sorted by average rating, then rating count.
+- All-Time Portfolio shows rated entries from every Daily Challenge, highest-rated first.
+- Community images are downscaled/compressed before Firestore upload to stay comfortably below Firestore's 1 MiB document size limit.

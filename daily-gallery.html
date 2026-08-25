@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Daily Gallery | Smeargle Says</title>
+  <meta name="theme-color" content="#fffdf7">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Smeargle Says">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="daily-gallery-page">
+  <a class="back-arrow" href="account.html">&lt;</a>
+
+  <main class="daily-gallery-shell">
+    <header class="daily-gallery-header">
+      <p class="daily-gallery-kicker">Smeargle Says Community</p>
+      <h1>Daily Challenge Gallery</h1>
+      <p id="dailyGallerySubtitle">See today's sketches, rate other artists out of 10, and help the favorites rise to the top.</p>
+      <div class="daily-gallery-tabs" role="tablist" aria-label="Daily gallery views">
+        <button id="todayGalleryTab" class="gallery-tab active" type="button">Today's Rankings</button>
+        <button id="portfolioGalleryTab" class="gallery-tab" type="button">All-Time Portfolio</button>
+      </div>
+    </header>
+
+    <section id="galleryAuthNote" class="gallery-auth-note hidden"></section>
+    <section id="dailyGalleryGrid" class="daily-gallery-grid" aria-live="polite">
+      <p class="gallery-loading">Loading community drawings...</p>
+    </section>
+  </main>
+
+  <div id="dailyImageOverlay" class="modal-overlay hidden">
+    <section class="daily-image-modal">
+      <button id="closeDailyImageBtn" class="close-button" type="button" aria-label="Close">×</button>
+      <img id="dailyImageLarge" alt="Daily challenge drawing">
+      <div id="dailyImageCaption"></div>
+    </section>
+  </div>
+
+  <script type="module" src="script.js"></script>
+</body>
+</html>
