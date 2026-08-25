@@ -10,6 +10,16 @@ import {
   signOut
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 
+import {
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  runTransaction,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+
 const firebaseConfig = {
   apiKey: "AIzaSyDTTA23NmjlRBt7qFo7ot9tFABE8mpVEOg",
   authDomain: "smeargle-says.firebaseapp.com",
@@ -22,9 +32,17 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getFirestore(app);
 
 export {
   auth,
+  db,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  runTransaction,
+  serverTimestamp,
   GoogleAuthProvider,
   OAuthProvider,
   signInWithPopup,
