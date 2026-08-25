@@ -1,4 +1,4 @@
-const CACHE_NAME = "smeargle-says-v4-daily-gallery";
+const CACHE_NAME = "smeargle-says-v5-gallery-button";
 
 const APP_SHELL = [
   "./",

@@ -1494,7 +1494,7 @@ function setupCanvasPage() {
     `;
     modal.classList.remove("hidden");
     const continueBtn = document.getElementById("scoreContinueBtn");
-    if (settings.dailyChallenge) continueBtn.textContent = "View Daily Gallery";
+    if (settings.dailyChallenge) continueBtn.textContent = "Gallery";
     continueBtn.onclick = async () => {
       continueBtn.disabled = true;
       if (settings.dailyChallenge) {

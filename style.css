@@ -1937,30 +1937,6 @@ body {
 
 
 /* Daily Challenge community gallery */
-.daily-card-actions {
-  grid-area: button;
-  display: grid;
-  gap: 6px;
-  justify-items: stretch;
-}
-
-.daily-card-actions .daily-play-button {
-  grid-area: auto;
-}
-
-.daily-gallery-link {
-  color: var(--ink);
-  font-size: 11px;
-  font-weight: 900;
-  text-align: center;
-  text-decoration: none;
-  letter-spacing: .02em;
-}
-
-.daily-gallery-link:hover {
-  text-decoration: underline;
-}
-
 .daily-gallery-page {
   min-height: 100svh;
   padding: 72px 24px 80px;
