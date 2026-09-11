@@ -1483,26 +1483,57 @@ function setupCanvasPage() {
 
   function showScoreThenContinue(scoreResult) {
     const modal = createScoreModal();
-    document.getElementById("scoreNumber").textContent = scoreResult.score === null ? "Saved" : `${scoreResult.score}/100`;
-    document.getElementById("scoreMessage").textContent = scoreResult.message;
-    const breakdown = scoreResult.breakdown || { outline: 0, proportions: 0, placement: 0, detail: 0 };
+
+    document.getElementById("scoreNumber").textContent =
+      scoreResult.score === null
+        ? "Saved"
+        : `${scoreResult.score}/100`;
+
+    document.getElementById("scoreMessage").textContent =
+      scoreResult.message;
+
+    const breakdown = scoreResult.breakdown || {
+      outline: 0,
+      proportions: 0,
+      placement: 0,
+      detail: 0
+    };
+
     document.getElementById("scoreBreakdown").innerHTML = `
       ${makeScoreBar("Outline", breakdown.outline)}
       ${makeScoreBar("Proportions", breakdown.proportions)}
       ${makeScoreBar("Placement", breakdown.placement)}
       ${makeScoreBar("Detail", breakdown.detail)}
     `;
-    modal.classList.remove("hidden");
+
     const continueBtn = document.getElementById("scoreContinueBtn");
-    if (settings.dailyChallenge) continueBtn.textContent = "Gallery";
+
+    // IMPORTANT: reset the button every time the modal opens
+    continueBtn.disabled = false;
+    continueBtn.textContent = settings.dailyChallenge
+      ? "Gallery"
+      : "Next Round";
+
+    modal.classList.remove("hidden");
+
     continueBtn.onclick = async () => {
+      // Prevent accidental double-clicks
       continueBtn.disabled = true;
+
       if (settings.dailyChallenge) {
-        try { await dailyPublishPromise; } catch (error) { console.error(error); }
+        try {
+          await dailyPublishPromise;
+        } catch (error) {
+          console.error(error);
+        }
+
         window.location.href = "daily-gallery.html";
         return;
       }
+
       modal.classList.add("hidden");
+
+      // Advance to the next round
       advanceRoundAfterDone();
     };
   }
