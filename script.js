@@ -1377,7 +1377,7 @@ function setupCanvasPage() {
 
   function getMaskStats(mask, width = 128) {
     let count = 0;
-    let minX = width, minY = width, maxX = 0, maxY = 0;
+    let minX = width, minY = width, maxX = -1, maxY = -1;
     mask.forEach((value, index) => {
       if (!value) return;
       count++;
@@ -1388,32 +1388,79 @@ function setupCanvasPage() {
       maxX = Math.max(maxX, x);
       maxY = Math.max(maxY, y);
     });
-    if (!count) return { count: 0, area: 0, centerX: 0, centerY: 0, width: 0, height: 0 };
+    if (!count) {
+      return {
+        count: 0,
+        area: 0,
+        width: 0,
+        height: 0,
+        minX: 0,
+        minY: 0,
+        maxX: 0,
+        maxY: 0
+      };
+    }
     return {
       count,
       area: (maxX - minX + 1) * (maxY - minY + 1),
-      centerX: (minX + maxX) / 2,
-      centerY: (minY + maxY) / 2,
       width: maxX - minX + 1,
-      height: maxY - minY + 1
+      height: maxY - minY + 1,
+      minX,
+      minY,
+      maxX,
+      maxY
     };
   }
 
-  function compareMasks(userMask, referenceMask) {
-    let intersection = 0;
-    let union = 0;
-    for (let i = 0; i < userMask.length; i++) {
-      if (userMask[i] && referenceMask[i]) intersection++;
-      if (userMask[i] || referenceMask[i]) union++;
-    }
-    return union ? intersection / union : 0;
+  function normalizeMask(mask, stats, sourceWidth = 128, targetSize = 64) {
+    const normalized = new Uint8Array(targetSize * targetSize);
+    if (!stats.count || !stats.width || !stats.height) return normalized;
+
+    mask.forEach((value, index) => {
+      if (!value) return;
+      const x = index % sourceWidth;
+      const y = Math.floor(index / sourceWidth);
+      const nx = Math.min(targetSize - 1, Math.max(0,
+        Math.round(((x - stats.minX) / Math.max(1, stats.width - 1)) * (targetSize - 1))
+      ));
+      const ny = Math.min(targetSize - 1, Math.max(0,
+        Math.round(((y - stats.minY) / Math.max(1, stats.height - 1)) * (targetSize - 1))
+      ));
+      normalized[ny * targetSize + nx] = 1;
+    });
+
+    return normalized;
   }
 
-  function getDrawingColorStats(imageData) {
+  function getOccupiedGridCells(mask, width = 64, gridSize = 8) {
+    const occupied = new Set();
+    const cellSize = width / gridSize;
+    mask.forEach((value, index) => {
+      if (!value) return;
+      const x = index % width;
+      const y = Math.floor(index / width);
+      const cellX = Math.min(gridSize - 1, Math.floor(x / cellSize));
+      const cellY = Math.min(gridSize - 1, Math.floor(y / cellSize));
+      occupied.add(`${cellX},${cellY}`);
+    });
+    return occupied.size;
+  }
+
+  function getMaskPrecision(userMask, referenceMask) {
+    let userPixels = 0;
+    let matchingPixels = 0;
+    for (let i = 0; i < userMask.length; i++) {
+      if (!userMask[i]) continue;
+      userPixels++;
+      if (referenceMask[i]) matchingPixels++;
+    }
+    return userPixels ? matchingPixels / userPixels : 0;
+  }
+
+  function getColorRatio(imageData) {
     const data = imageData.data;
     let inkPixels = 0;
-    let coloredPixels = 0;
-    const colorBins = new Set();
+    let colorfulPixels = 0;
 
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i];
@@ -1423,24 +1470,16 @@ function setupCanvasPage() {
       if (a <= 10 || (r > 235 && g > 235 && b > 235)) continue;
 
       inkPixels++;
-      const maxChannel = Math.max(r, g, b);
-      const minChannel = Math.min(r, g, b);
-      const chroma = maxChannel - minChannel;
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const saturation = max ? (max - min) / max : 0;
+      const brightness = (r + g + b) / 3;
 
-      // Ignore black/gray line work when deciding whether a drawing is colored.
-      if (chroma > 24 && maxChannel > 55) {
-        coloredPixels++;
-        // Coarse bins prevent anti-aliasing from counting as dozens of colors.
-        colorBins.add(`${Math.round(r / 48)}-${Math.round(g / 48)}-${Math.round(b / 48)}`);
-      }
+      // Ignore black/gray line art and count intentionally colored pixels.
+      if (saturation >= 0.18 && brightness >= 35) colorfulPixels++;
     }
 
-    return {
-      inkPixels,
-      coloredPixels,
-      colorRatio: inkPixels ? coloredPixels / inkPixels : 0,
-      uniqueColors: colorBins.size
-    };
+    return inkPixels ? colorfulPixels / inkPixels : 0;
   }
 
   function scoreCurrentDrawing() {
@@ -1451,7 +1490,6 @@ function setupCanvasPage() {
       const referenceMask = buildReferenceMask(referenceData);
       const userStats = getMaskStats(userMask);
       const refStats = getMaskStats(referenceMask);
-      const colorStats = getDrawingColorStats(userData);
 
       if (!userStats.count) {
         return {
@@ -1461,103 +1499,79 @@ function setupCanvasPage() {
         };
       }
 
-      let intersection = 0;
-      for (let i = 0; i < userMask.length; i++) {
-        if (userMask[i] && referenceMask[i]) intersection++;
-      }
+      const normalizedUser = normalizeMask(userMask, userStats);
+      const normalizedReference = normalizeMask(referenceMask, refStats);
+      const shapePrecision = getMaskPrecision(normalizedUser, normalizedReference);
 
-      // How much of the player's drawing lands on the Pokemon, without grading
-      // where the Pokemon was placed on the canvas.
-      const silhouetteMatch = userStats.count ? intersection / userStats.count : 0;
+      const userOccupied = getOccupiedGridCells(normalizedUser);
+      const referenceOccupied = Math.max(1, getOccupiedGridCells(normalizedReference));
+      const spreadRatio = Math.min(1, userOccupied / referenceOccupied);
+
       const widthRatio = Math.min(userStats.width, refStats.width) / Math.max(userStats.width, refStats.width || 1);
       const heightRatio = Math.min(userStats.height, refStats.height) / Math.max(userStats.height, refStats.height || 1);
-      const proportionsSimilarity = (widthRatio + heightRatio) / 2;
-
-      const totalPixels = 128 * 128;
-      const bboxCoverage = userStats.area / totalPixels;
-      const inkDensity = userStats.area ? userStats.count / userStats.area : 0;
-      const relativeInk = Math.min(1, userStats.count / Math.max(refStats.count * 0.7, 1));
-
-      // These values describe finish/effort rather than absolute canvas position.
-      const effort = Math.max(0, Math.min(1, (userStats.count - 45) / 520));
-      const structure = Math.max(0, Math.min(1,
-        (proportionsSimilarity * 0.55) + (silhouetteMatch * 0.45)
-      ));
-      const detailQuality = Math.max(0, Math.min(1,
-        (effort * 0.45) +
-        (Math.min(1, bboxCoverage / 0.18) * 0.20) +
-        (structure * 0.35)
-      ));
-      const colorQuality = Math.max(0, Math.min(1,
-        (Math.min(1, colorStats.colorRatio / 0.55) * 0.55) +
-        (Math.min(1, colorStats.uniqueColors / 4) * 0.20) +
-        (relativeInk * 0.25)
-      ));
+      const userAspect = userStats.width / Math.max(1, userStats.height);
+      const refAspect = refStats.width / Math.max(1, refStats.height);
+      const aspectRatio = Math.min(userAspect, refAspect) / Math.max(userAspect, refAspect || 1);
 
       const outlineScore = Math.round(Math.max(0, Math.min(100,
-        (silhouetteMatch * 65) + (structure * 35)
+        (shapePrecision * 0.72 + spreadRatio * 0.28) * 100
       )));
-      const proportionsScore = Math.round(proportionsSimilarity * 100);
-      const detailScore = Math.round(detailQuality * 100);
-      const colorScore = Math.round(colorQuality * 100);
+      const proportionsScore = Math.round(Math.max(0, Math.min(100,
+        ((widthRatio + heightRatio + aspectRatio) / 3) * 100
+      )));
 
-      // Grade by drawing stage first, then use similarity/effort to choose a
-      // score inside that stage. This prevents a tiny squiggle from receiving
-      // a large score simply because it happens to overlap the reference.
-      const quality = Math.max(0, Math.min(1,
-        (structure * 0.50) + (detailQuality * 0.30) + (colorQuality * 0.20)
-      ));
+      // Detail measures how much of the subject has actually been developed,
+      // rather than where it was placed on the canvas.
+      const inkAmount = Math.min(1, userStats.count / 1800);
+      const detailScore = Math.round(Math.max(0, Math.min(100,
+        (spreadRatio * 0.72 + inkAmount * 0.28) * 100
+      )));
 
-      const looksLikeSquiggle =
-        userStats.count < 95 ||
-        userStats.area < 650 ||
-        (userStats.count < 145 && inkDensity < 0.035);
+      const colorRatio = getColorRatio(userData);
+      const colorScore = Math.round(Math.max(0, Math.min(100, colorRatio * 125)));
 
-      const looksColoredAndComplete =
-        colorStats.colorRatio >= 0.30 &&
-        colorStats.uniqueColors >= 2 &&
-        relativeInk >= 0.28 &&
-        detailQuality >= 0.52 &&
-        structure >= 0.40;
-
-      const looksLikeLineArt =
-        !looksColoredAndComplete &&
-        userStats.count >= 210 &&
-        userStats.area >= 1500 &&
-        detailQuality >= 0.48 &&
-        structure >= 0.38;
-
-      const looksLikeRoughSketch =
-        !looksLikeLineArt &&
-        userStats.count >= 145 &&
-        userStats.area >= 950 &&
-        detailQuality >= 0.28;
+      // Core drawing quality ignores absolute placement. This makes a good sketch
+      // score well even if the artist drew it off-center or at a different scale.
+      const coreQuality = (
+        outlineScore * 0.42 +
+        proportionsScore * 0.30 +
+        detailScore * 0.28
+      );
 
       let score;
       let message;
 
-      if (looksLikeSquiggle) {
-        score = Math.max(1, Math.min(9, Math.round(2 + quality * 7)));
-        message = "Very early sketch detected. Add the main body shapes before worrying about details.";
-      } else if (!looksLikeRoughSketch) {
-        score = Math.max(10, Math.min(39, Math.round(10 + quality * 29)));
-        message = "Incomplete sketch. Keep building the major shapes and defining the silhouette.";
-      } else if (!looksLikeLineArt) {
-        score = Math.max(40, Math.min(59, Math.round(40 + quality * 19)));
-        message = "Rough sketch detected. The structure is there; refine the outline and add more detail.";
-      } else if (!looksColoredAndComplete) {
-        score = Math.max(60, Math.min(79, Math.round(60 + quality * 19)));
-        message = "Strong line art. Clean up the details or add color to push it into the top range.";
+      // Tier the final score so the numbers better match how a human would judge
+      // the drawing's stage of completion.
+      if (detailScore < 18 || userStats.count < 90) {
+        // A few marks / a squiggle: 1-9.
+        score = Math.max(1, Math.min(9, Math.round((detailScore * 0.30 + coreQuality * 0.05))));
+        message = "That's still mostly a squiggle. Block in the Pokémon's main body and major features first.";
+      } else if (detailScore < 48 || coreQuality < 38) {
+        // Recognizable but incomplete: 10-39.
+        const progress = Math.max(detailScore / 48, coreQuality / 38);
+        score = Math.max(10, Math.min(39, Math.round(10 + progress * 29)));
+        message = "Good start! Keep developing the missing body parts and major features.";
+      } else if (coreQuality < 64) {
+        // Rough sketch: 40-59.
+        const progress = Math.max(0, Math.min(1, (coreQuality - 38) / 26));
+        score = Math.max(40, Math.min(59, Math.round(40 + progress * 19)));
+        message = "Nice rough sketch! Clean up the silhouette and proportions for a stronger match.";
+      } else if (colorScore < 25) {
+        // Complete line art: 60-79.
+        const progress = Math.max(0, Math.min(1, (coreQuality - 64) / 36));
+        score = Math.max(60, Math.min(79, Math.round(60 + progress * 19)));
+        message = "Strong line art! Add color and finish the remaining details to push the score higher.";
       } else {
-        // Fully colored drawings start at 80, but still need good structure and
-        // finish to approach 100.
-        const finishedQuality = Math.max(0, Math.min(1,
-          (structure * 0.45) + (detailQuality * 0.25) + (colorQuality * 0.30)
+        // Complete, colored drawing: 80-100. Color helps, but cannot rescue weak structure.
+        const structureProgress = Math.max(0, Math.min(1, (coreQuality - 64) / 36));
+        const colorProgress = colorScore / 100;
+        score = Math.max(80, Math.min(100,
+          Math.round(80 + structureProgress * 14 + colorProgress * 6)
         ));
-        score = Math.max(80, Math.min(100, Math.round(80 + finishedQuality * 20)));
         message = score >= 95
-          ? "Excellent! This looks complete, well-structured, and fully colored."
-          : "Great finished drawing! Strong completeness and color with room for small refinements.";
+          ? "Excellent! This looks complete, well-proportioned, and fully colored."
+          : "Great work! The drawing is complete and colored with a strong overall match.";
       }
 
       return {
@@ -1596,41 +1610,60 @@ function setupCanvasPage() {
 
   function showScoreThenContinue(scoreResult) {
     const modal = createScoreModal();
-    document.getElementById("scoreNumber").textContent = scoreResult.score === null ? "Saved" : `${scoreResult.score}/100`;
-    document.getElementById("scoreMessage").textContent = scoreResult.message;
-    const breakdown = scoreResult.breakdown || { outline: 0, proportions: 0, detail: 0, color: 0 };
+
+    document.getElementById("scoreNumber").textContent =
+      scoreResult.score === null
+        ? "Saved"
+        : `${scoreResult.score}/100`;
+
+    document.getElementById("scoreMessage").textContent =
+      scoreResult.message;
+
+    const breakdown = scoreResult.breakdown || {
+      outline: 0,
+      proportions: 0,
+      detail: 0,
+      color: 0
+    };
+
     document.getElementById("scoreBreakdown").innerHTML = `
       ${makeScoreBar("Outline", breakdown.outline)}
       ${makeScoreBar("Proportions", breakdown.proportions)}
       ${makeScoreBar("Detail", breakdown.detail)}
-      ${makeScoreBar("Color / Finish", breakdown.color)}
+      ${makeScoreBar("Color", breakdown.color)}
     `;
 
     const continueBtn = document.getElementById("scoreContinueBtn");
 
-    // The score modal is reused every round. The previous handler disabled this
-    // button and never re-enabled it, which made Next Round stop working after
-    // the first successful click.
+    // IMPORTANT: reset the button every time the modal opens
     continueBtn.disabled = false;
-    continueBtn.textContent = settings.dailyChallenge ? "Gallery" : "Next Round";
+    continueBtn.textContent = settings.dailyChallenge
+      ? "Gallery"
+      : "Next Round";
+
     modal.classList.remove("hidden");
 
     continueBtn.onclick = async () => {
-      // Prevent a double-click during this one transition only.
-      if (continueBtn.disabled) return;
+      // Prevent accidental double-clicks
       continueBtn.disabled = true;
 
       if (settings.dailyChallenge) {
-        try { await dailyPublishPromise; } catch (error) { console.error(error); }
+        try {
+          await dailyPublishPromise;
+        } catch (error) {
+          console.error(error);
+        }
+
         window.location.href = "daily-gallery.html";
         return;
       }
 
       modal.classList.add("hidden");
+
+      // Advance to the next round
       advanceRoundAfterDone();
     };
   }
-
 
 
   if (channel) {
@@ -1769,6 +1802,9 @@ function setupCanvasPage() {
       clearInterval(timerInterval);
       const scoreResult = scoreCurrentDrawing();
       const savedDrawing = saveCurrentDrawing(scoreResult);
+      if (savedDrawing) {
+        recordDrawingStats(scoreResult, settings.dailyChallenge);
+      }
       if (settings.dailyChallenge && savedDrawing) {
         dailyPublishPromise = publishDailyChallengeDrawing({
           canvas,
