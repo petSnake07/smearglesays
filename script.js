@@ -1325,21 +1325,18 @@ function setupCanvasPage() {
     modal = document.createElement("div");
     modal.id = "scoreOverlay";
     modal.className = "modal-overlay hidden";
+    modal.style.overflowY = "auto";
+    modal.style.padding = "28px 16px";
+    modal.style.alignItems = "flex-start";
     modal.innerHTML = `
-      <div class="score-modal detailed-score-modal">
+      <div class="score-modal detailed-score-modal" style="width:min(580px,94vw);max-height:calc(100vh - 56px);overflow-y:auto;overflow-x:hidden;margin:auto;">
         <h2>Score</h2>
         <div id="scoreNumber" class="score-number">--</div>
         <div id="scoreBreakdown" class="score-breakdown" aria-live="polite"></div>
         <p id="scoreMessage">Comparing your drawing...</p>
         <button id="scoreContinueBtn">Next Round</button>
-        <button id="scoreDisagreeBtn" type="button" style="display:block;margin:14px auto 0;border:0;background:transparent;color:#1684ff;font:inherit;font-weight:800;cursor:pointer;padding:4px 8px;text-decoration:underline;box-shadow:none;">Disagree?</button>
-        <div id="scoreFeedbackPanel" hidden style="margin-top:10px;padding-top:10px;border-top:2px dashed rgba(17,17,17,.25);">
-          <label for="preferredScoreInput" style="display:block;margin-bottom:6px;font-weight:800;">What score would you give this drawing?</label>
-          <div style="display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;">
-            <input id="preferredScoreInput" type="number" min="0" max="100" step="1" inputmode="numeric" placeholder="0-100" style="width:105px;height:42px;border:3px solid #111;border-radius:12px;padding:0 10px;font:inherit;font-weight:800;text-align:center;background:white;">
-            <button id="preferredScoreSubmitBtn" type="button" style="min-height:42px;border:3px solid #111;border-radius:12px;padding:7px 14px;background:white;font:inherit;font-weight:900;cursor:pointer;box-shadow:0 3px 0 #111;">Submit</button>
-          </div>
-          <p id="scoreFeedbackStatus" style="min-height:20px;margin:8px 0 0;font-size:14px;"></p>
+        <div id="scoreFeedbackArea" style="margin-top:14px;text-align:center;">
+          <button id="scoreDisagreeBtn" type="button" style="border:0;background:transparent;color:#1684ff;font:inherit;font-size:17px;font-weight:800;cursor:pointer;padding:2px 4px;text-decoration:underline;box-shadow:none;">Disagree?</button>
         </div>
       </div>
     `;
@@ -1730,33 +1727,22 @@ function setupCanvasPage() {
     `;
 
     const continueBtn = document.getElementById("scoreContinueBtn");
-
-    // IMPORTANT: reset the button every time the modal opens
     continueBtn.disabled = false;
     continueBtn.textContent = settings.dailyChallenge
       ? "Gallery"
       : "Next Round";
 
-    const disagreeBtn = document.getElementById("scoreDisagreeBtn");
-    const feedbackPanel = document.getElementById("scoreFeedbackPanel");
-    const preferredScoreInput = document.getElementById("preferredScoreInput");
-    const preferredScoreSubmitBtn = document.getElementById("preferredScoreSubmitBtn");
-    const feedbackStatus = document.getElementById("scoreFeedbackStatus");
+    const feedbackArea = document.getElementById("scoreFeedbackArea");
+    feedbackArea.innerHTML = `
+      <button id="scoreDisagreeBtn" type="button" style="border:0;background:transparent;color:#1684ff;font:inherit;font-size:17px;font-weight:800;cursor:pointer;padding:2px 4px;text-decoration:underline;box-shadow:none;">Disagree?</button>
+    `;
 
-    feedbackPanel.hidden = true;
-    preferredScoreInput.value = "";
-    preferredScoreInput.disabled = false;
-    preferredScoreSubmitBtn.disabled = false;
-    feedbackStatus.textContent = "";
-    disagreeBtn.textContent = "Disagree?";
+    const savePreferredScore = () => {
+      const preferredScoreInput = document.getElementById("preferredScoreInput");
+      const preferredScoreSubmitBtn = document.getElementById("preferredScoreSubmitBtn");
+      const feedbackStatus = document.getElementById("scoreFeedbackStatus");
+      if (!preferredScoreInput || !preferredScoreSubmitBtn || !feedbackStatus) return;
 
-    disagreeBtn.onclick = () => {
-      feedbackPanel.hidden = !feedbackPanel.hidden;
-      disagreeBtn.textContent = feedbackPanel.hidden ? "Disagree?" : "Hide feedback";
-      if (!feedbackPanel.hidden) preferredScoreInput.focus();
-    };
-
-    preferredScoreSubmitBtn.onclick = () => {
       const preferredScore = Number(preferredScoreInput.value);
       if (!Number.isInteger(preferredScore) || preferredScore < 0 || preferredScore > 100) {
         feedbackStatus.textContent = "Enter a whole number from 0 to 100.";
@@ -1792,10 +1778,29 @@ function setupCanvasPage() {
       downloadScoreFeedbackTxt(entries);
     };
 
+    document.getElementById("scoreDisagreeBtn").onclick = () => {
+      feedbackArea.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;gap:9px;">
+          <label for="preferredScoreInput" style="font-size:18px;font-weight:800;">What score would you give this drawing?</label>
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
+            <input id="preferredScoreInput" type="number" min="0" max="100" step="1" inputmode="numeric" placeholder="0-100" style="width:90px;height:42px;padding:4px 10px;border:3px solid #111;border-radius:12px;background:white;font:inherit;font-size:18px;font-weight:800;text-align:center;">
+            <span style="font-size:18px;font-weight:800;">/100</span>
+            <button id="preferredScoreSubmitBtn" type="button" style="min-height:42px;padding:6px 16px;border:3px solid #111;border-radius:12px;background:white;box-shadow:0 4px 0 #111;font:inherit;font-weight:800;cursor:pointer;">Submit</button>
+          </div>
+          <p id="scoreFeedbackStatus" style="min-height:18px;margin:3px 0 0;font-size:14px;"></p>
+        </div>
+      `;
+
+      document.getElementById("preferredScoreSubmitBtn")?.addEventListener("click", savePreferredScore);
+      document.getElementById("preferredScoreInput")?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") savePreferredScore();
+      });
+      document.getElementById("preferredScoreInput")?.focus();
+    };
+
     modal.classList.remove("hidden");
 
     continueBtn.onclick = async () => {
-      // Prevent accidental double-clicks
       continueBtn.disabled = true;
 
       if (settings.dailyChallenge) {
@@ -1810,11 +1815,10 @@ function setupCanvasPage() {
       }
 
       modal.classList.add("hidden");
-
-      // Advance to the next round
       advanceRoundAfterDone();
     };
   }
+
 
 
   if (channel) {
