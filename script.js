@@ -1332,6 +1332,15 @@ function setupCanvasPage() {
         <div id="scoreBreakdown" class="score-breakdown" aria-live="polite"></div>
         <p id="scoreMessage">Comparing your drawing...</p>
         <button id="scoreContinueBtn">Next Round</button>
+        <button id="scoreDisagreeBtn" type="button" style="display:block;margin:14px auto 0;border:0;background:transparent;color:#1684ff;font:inherit;font-weight:800;cursor:pointer;padding:4px 8px;text-decoration:underline;box-shadow:none;">Disagree?</button>
+        <div id="scoreFeedbackPanel" hidden style="margin-top:10px;padding-top:10px;border-top:2px dashed rgba(17,17,17,.25);">
+          <label for="preferredScoreInput" style="display:block;margin-bottom:6px;font-weight:800;">What score would you give this drawing?</label>
+          <div style="display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;">
+            <input id="preferredScoreInput" type="number" min="0" max="100" step="1" inputmode="numeric" placeholder="0-100" style="width:105px;height:42px;border:3px solid #111;border-radius:12px;padding:0 10px;font:inherit;font-weight:800;text-align:center;background:white;">
+            <button id="preferredScoreSubmitBtn" type="button" style="min-height:42px;border:3px solid #111;border-radius:12px;padding:7px 14px;background:white;font:inherit;font-weight:900;cursor:pointer;box-shadow:0 3px 0 #111;">Submit</button>
+          </div>
+          <p id="scoreFeedbackStatus" style="min-height:20px;margin:8px 0 0;font-size:14px;"></p>
+        </div>
       </div>
     `;
     document.body.appendChild(modal);
@@ -1608,7 +1617,94 @@ function setupCanvasPage() {
     `;
   }
 
-  function showScoreThenContinue(scoreResult) {
+  function getScoreFeedbackStorageKey() {
+    return `pokedrawScoreFeedback_${getUsername()}`;
+  }
+
+  function getScoreFeedbackEntries() {
+    try {
+      return JSON.parse(localStorage.getItem(getScoreFeedbackStorageKey()) || "[]");
+    } catch (error) {
+      console.warn("Could not read score feedback log", error);
+      return [];
+    }
+  }
+
+  function getPreferredScoreBias(actualScore, preferredScore) {
+    if (typeof actualScore !== "number" || !Number.isFinite(actualScore)) {
+      return { delta: null, bias: 0, label: "unrated" };
+    }
+
+    const delta = Math.round(preferredScore - actualScore);
+    const gap = Math.abs(delta);
+
+    // Small disagreements are normal. Bias only begins after a 15-point gap.
+    // Positive values indicate self-inflation; negative values indicate self-deflation.
+    const magnitude = gap <= 15 ? 0 : Math.min(100, Math.round((gap - 15) * 1.5));
+    const bias = magnitude === 0 ? 0 : Math.sign(delta) * magnitude;
+    const label = gap <= 15 ? "reasonable" : gap <= 30 ? "possibly biased" : "highly biased";
+
+    return { delta, bias, label };
+  }
+
+  function updateSavedDrawingFeedback(savedDrawing, preferredScore, biasInfo) {
+    if (!savedDrawing || !currentPokemon) return;
+    const sketches = getStoredSketches();
+    const pokemonKey = currentPokemon.key || String(currentPokemon.id);
+    const drawings = sketches[pokemonKey]?.drawings || [];
+    const match = drawings.find((drawing) =>
+      drawing.date === savedDrawing.date &&
+      drawing.round === savedDrawing.round &&
+      drawing.image === savedDrawing.image
+    );
+    if (!match) return;
+
+    match.preferredScore = preferredScore;
+    match.scoreBias = biasInfo.bias;
+    match.scoreBiasLabel = biasInfo.label;
+    match.scoreDelta = biasInfo.delta;
+    saveStoredSketches(sketches);
+  }
+
+  function buildScoreFeedbackTxt(entries) {
+    const lines = [
+      "Smeargle Says - Score Disagreement Log",
+      "bias: 0 = within 15 points of the automatic score; positive = preferred score is higher; negative = preferred score is lower.",
+      "",
+    ];
+
+    entries.forEach((entry, index) => {
+      lines.push(`--- Feedback ${index + 1} ---`);
+      lines.push(`timestamp: ${entry.timestamp}`);
+      lines.push(`user: ${entry.user}`);
+      lines.push(`pokemon: ${entry.pokemonName}`);
+      lines.push(`pokemon_id: ${entry.pokemonId}`);
+      lines.push(`round: ${entry.round}`);
+      lines.push(`actual_score: ${entry.actualScore}`);
+      lines.push(`preferred_score: ${entry.preferredScore}`);
+      lines.push(`score_delta: ${entry.delta}`);
+      lines.push(`bias: ${entry.bias}`);
+      lines.push(`bias_label: ${entry.biasLabel}`);
+      lines.push(`drawing_link: ${entry.drawingLink}`);
+      lines.push("");
+    });
+
+    return lines.join("\n");
+  }
+
+  function downloadScoreFeedbackTxt(entries) {
+    const blob = new Blob([buildScoreFeedbackTxt(entries)], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "smeargle-score-feedback.txt";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function showScoreThenContinue(scoreResult, savedDrawing = null) {
     const modal = createScoreModal();
 
     document.getElementById("scoreNumber").textContent =
@@ -1640,6 +1736,61 @@ function setupCanvasPage() {
     continueBtn.textContent = settings.dailyChallenge
       ? "Gallery"
       : "Next Round";
+
+    const disagreeBtn = document.getElementById("scoreDisagreeBtn");
+    const feedbackPanel = document.getElementById("scoreFeedbackPanel");
+    const preferredScoreInput = document.getElementById("preferredScoreInput");
+    const preferredScoreSubmitBtn = document.getElementById("preferredScoreSubmitBtn");
+    const feedbackStatus = document.getElementById("scoreFeedbackStatus");
+
+    feedbackPanel.hidden = true;
+    preferredScoreInput.value = "";
+    preferredScoreInput.disabled = false;
+    preferredScoreSubmitBtn.disabled = false;
+    feedbackStatus.textContent = "";
+    disagreeBtn.textContent = "Disagree?";
+
+    disagreeBtn.onclick = () => {
+      feedbackPanel.hidden = !feedbackPanel.hidden;
+      disagreeBtn.textContent = feedbackPanel.hidden ? "Disagree?" : "Hide feedback";
+      if (!feedbackPanel.hidden) preferredScoreInput.focus();
+    };
+
+    preferredScoreSubmitBtn.onclick = () => {
+      const preferredScore = Number(preferredScoreInput.value);
+      if (!Number.isInteger(preferredScore) || preferredScore < 0 || preferredScore > 100) {
+        feedbackStatus.textContent = "Enter a whole number from 0 to 100.";
+        feedbackStatus.style.color = "#a12929";
+        return;
+      }
+
+      const biasInfo = getPreferredScoreBias(scoreResult.score, preferredScore);
+      const drawingLink = savedDrawing?.image || canvas.toDataURL("image/png");
+      const entry = {
+        timestamp: new Date().toISOString(),
+        user: getUsername(),
+        pokemonId: currentPokemon?.id ?? "",
+        pokemonName: currentPokemon?.name || "Unknown",
+        round,
+        actualScore: scoreResult.score,
+        preferredScore,
+        delta: biasInfo.delta,
+        bias: biasInfo.bias,
+        biasLabel: biasInfo.label,
+        drawingLink
+      };
+
+      const entries = getScoreFeedbackEntries();
+      entries.push(entry);
+      localStorage.setItem(getScoreFeedbackStorageKey(), JSON.stringify(entries));
+      updateSavedDrawingFeedback(savedDrawing, preferredScore, biasInfo);
+
+      feedbackStatus.style.color = "#2f6f2f";
+      feedbackStatus.textContent = `Feedback saved. Bias: ${biasInfo.bias} (${biasInfo.label}). A TXT copy was downloaded.`;
+      preferredScoreInput.disabled = true;
+      preferredScoreSubmitBtn.disabled = true;
+      downloadScoreFeedbackTxt(entries);
+    };
 
     modal.classList.remove("hidden");
 
@@ -1815,7 +1966,7 @@ function setupCanvasPage() {
           return { published: false, reason: "error" };
         });
       }
-      showScoreThenContinue(scoreResult);
+      showScoreThenContinue(scoreResult, savedDrawing);
       return;
     }
     if (round >= settings.totalRounds) {
