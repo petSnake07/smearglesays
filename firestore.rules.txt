@@ -1,0 +1,14 @@
+// Merge this match block into your existing Firestore rules.
+// This version lets signed-in users submit feedback but prevents clients from reading it.
+// If you want guests to submit too, change `request.auth != null` to `true`, but add abuse protection.
+
+match /scoreFeedback/{feedbackId} {
+  allow create: if request.auth != null
+    && request.resource.data.actualScore is number
+    && request.resource.data.preferredScore is number
+    && request.resource.data.preferredScore >= 0
+    && request.resource.data.preferredScore <= 100
+    && request.resource.data.bias is number
+    && request.resource.data.biasLabel is string;
+  allow read, update, delete: if false;
+}

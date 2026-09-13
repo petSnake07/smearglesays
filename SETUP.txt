@@ -1,0 +1,51 @@
+SMEARGLE SAYS - SHARED SCORE FEEDBACK SETUP
+
+What changed
+------------
+1. script.js no longer stores a drawing link in feedback.
+2. script.js no longer downloads a TXT file in the player's browser.
+3. Every submitted preferred score is written to the shared Firestore collection:
+      scoreFeedback
+4. A Firebase Cloud Function rebuilds this shared file after every new submission:
+      feedback/smeargle-score-feedback.txt
+   inside your project's default Firebase Storage bucket.
+
+Why a backend is required
+-------------------------
+GitHub Pages is static hosting. Browser JavaScript cannot safely append to a shared file on your computer or GitHub repository. Putting a GitHub token or server credential in script.js would expose it to every visitor.
+
+The included Cloud Function keeps Firestore as the canonical feedback log and automatically creates/updates the TXT file in Firebase Storage.
+
+Files
+-----
+script.js
+functions/index.js
+functions/package.json
+firestore.rules.txt
+
+Deployment outline
+------------------
+1. Install Firebase CLI if needed:
+      npm install -g firebase-tools
+
+2. From your Firebase project folder:
+      firebase login
+      firebase init functions firestore storage
+
+3. Replace the generated functions/index.js and functions/package.json with the included versions.
+
+4. Merge the scoreFeedback rule from firestore.rules.txt into your existing Firestore rules.
+
+5. Deploy:
+      firebase deploy --only functions,firestore:rules
+
+6. Submit a score disagreement from the site.
+
+7. In Firebase Console -> Storage, look for:
+      feedback/smeargle-score-feedback.txt
+
+Important
+---------
+The supplied Firestore rule allows only signed-in users to submit feedback. Your site supports Google/Apple sign-in, so this helps reduce spam. If you need Guest feedback too, the rules must be loosened and you should add rate limiting / App Check.
+
+The Cloud Function feature may require a Firebase billing-enabled project depending on your Firebase plan and current platform requirements.

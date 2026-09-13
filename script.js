@@ -1322,21 +1322,21 @@ function setupCanvasPage() {
   function createScoreModal() {
     let modal = document.getElementById("scoreOverlay");
     if (modal) return modal;
+
     modal = document.createElement("div");
     modal.id = "scoreOverlay";
     modal.className = "modal-overlay hidden";
     modal.style.overflowY = "auto";
-    modal.style.padding = "28px 16px";
-    modal.style.alignItems = "flex-start";
+    modal.style.padding = "24px 16px";
     modal.innerHTML = `
-      <div class="score-modal detailed-score-modal" style="width:min(580px,94vw);max-height:calc(100vh - 56px);overflow-y:auto;overflow-x:hidden;margin:auto;">
+      <div class="score-modal detailed-score-modal" style="max-height:calc(100vh - 48px);overflow-y:auto;margin:auto;">
         <h2>Score</h2>
         <div id="scoreNumber" class="score-number">--</div>
         <div id="scoreBreakdown" class="score-breakdown" aria-live="polite"></div>
         <p id="scoreMessage">Comparing your drawing...</p>
         <button id="scoreContinueBtn">Next Round</button>
         <div id="scoreFeedbackArea" style="margin-top:14px;text-align:center;">
-          <button id="scoreDisagreeBtn" type="button" style="border:0;background:transparent;color:#1684ff;font:inherit;font-size:17px;font-weight:800;cursor:pointer;padding:2px 4px;text-decoration:underline;box-shadow:none;">Disagree?</button>
+          <button id="scoreDisagreeBtn" type="button" style="border:0;background:transparent;color:#1684ff;font:inherit;font-weight:800;cursor:pointer;padding:4px 8px;text-decoration:underline;box-shadow:none;">Disagree?</button>
         </div>
       </div>
     `;
@@ -1614,19 +1614,6 @@ function setupCanvasPage() {
     `;
   }
 
-  function getScoreFeedbackStorageKey() {
-    return `pokedrawScoreFeedback_${getUsername()}`;
-  }
-
-  function getScoreFeedbackEntries() {
-    try {
-      return JSON.parse(localStorage.getItem(getScoreFeedbackStorageKey()) || "[]");
-    } catch (error) {
-      console.warn("Could not read score feedback log", error);
-      return [];
-    }
-  }
-
   function getPreferredScoreBias(actualScore, preferredScore) {
     if (typeof actualScore !== "number" || !Number.isFinite(actualScore)) {
       return { delta: null, bias: 0, label: "unrated" };
@@ -1663,42 +1650,90 @@ function setupCanvasPage() {
     saveStoredSketches(sketches);
   }
 
-  function buildScoreFeedbackTxt(entries) {
-    const lines = [
-      "Smeargle Says - Score Disagreement Log",
-      "bias: 0 = within 15 points of the automatic score; positive = preferred score is higher; negative = preferred score is lower.",
-      "",
-    ];
-
-    entries.forEach((entry, index) => {
-      lines.push(`--- Feedback ${index + 1} ---`);
-      lines.push(`timestamp: ${entry.timestamp}`);
-      lines.push(`user: ${entry.user}`);
-      lines.push(`pokemon: ${entry.pokemonName}`);
-      lines.push(`pokemon_id: ${entry.pokemonId}`);
-      lines.push(`round: ${entry.round}`);
-      lines.push(`actual_score: ${entry.actualScore}`);
-      lines.push(`preferred_score: ${entry.preferredScore}`);
-      lines.push(`score_delta: ${entry.delta}`);
-      lines.push(`bias: ${entry.bias}`);
-      lines.push(`bias_label: ${entry.biasLabel}`);
-      lines.push(`drawing_link: ${entry.drawingLink}`);
-      lines.push("");
+  async function saveScoreFeedbackShared(entry) {
+    // GitHub Pages cannot append directly to a shared server-side TXT file.
+    // Firestore is the shared source of truth. A Firebase Cloud Function included
+    // with this project regenerates feedback/smeargle-score-feedback.txt whenever
+    // a new feedback record is created.
+    const feedbackRef = doc(collection(db, "scoreFeedback"));
+    await runTransaction(db, async (transaction) => {
+      transaction.set(feedbackRef, {
+        ...entry,
+        createdAt: serverTimestamp()
+      });
     });
-
-    return lines.join("\n");
+    return feedbackRef.id;
   }
 
-  function downloadScoreFeedbackTxt(entries) {
-    const blob = new Blob([buildScoreFeedbackTxt(entries)], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "smeargle-score-feedback.txt";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  function resetScoreFeedbackArea(scoreResult, savedDrawing) {
+    const feedbackArea = document.getElementById("scoreFeedbackArea");
+    if (!feedbackArea) return;
+
+    feedbackArea.innerHTML = `
+      <button id="scoreDisagreeBtn" type="button" style="border:0;background:transparent;color:#1684ff;font:inherit;font-weight:800;cursor:pointer;padding:4px 8px;text-decoration:underline;box-shadow:none;">Disagree?</button>
+    `;
+
+    const disagreeBtn = document.getElementById("scoreDisagreeBtn");
+    disagreeBtn.onclick = () => {
+      feedbackArea.innerHTML = `
+        <div class="preferred-score-form" style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+          <label for="preferredScoreInput" style="font-weight:800;">What score would you give this drawing?</label>
+          <div style="display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;">
+            <input id="preferredScoreInput" type="number" min="0" max="100" step="1" inputmode="numeric" placeholder="0-100" style="width:105px;height:42px;border:3px solid #111;border-radius:12px;padding:0 10px;font:inherit;font-weight:800;text-align:center;background:white;">
+            <span style="font-weight:800;">/100</span>
+            <button id="preferredScoreSubmitBtn" type="button" style="min-height:42px;border:3px solid #111;border-radius:12px;padding:7px 14px;background:white;font:inherit;font-weight:900;cursor:pointer;box-shadow:0 3px 0 #111;">Submit</button>
+          </div>
+          <p id="scoreFeedbackStatus" style="min-height:20px;margin:2px 0 0;font-size:14px;"></p>
+        </div>
+      `;
+
+      const preferredScoreInput = document.getElementById("preferredScoreInput");
+      const preferredScoreSubmitBtn = document.getElementById("preferredScoreSubmitBtn");
+      const feedbackStatus = document.getElementById("scoreFeedbackStatus");
+      preferredScoreInput?.focus();
+
+      preferredScoreSubmitBtn.onclick = async () => {
+        const preferredScore = Number(preferredScoreInput.value);
+        if (!Number.isInteger(preferredScore) || preferredScore < 0 || preferredScore > 100) {
+          feedbackStatus.textContent = "Enter a whole number from 0 to 100.";
+          feedbackStatus.style.color = "#a12929";
+          return;
+        }
+
+        const biasInfo = getPreferredScoreBias(scoreResult.score, preferredScore);
+        const entry = {
+          user: getUsername(),
+          pokemonId: currentPokemon?.id ?? "",
+          pokemonName: currentPokemon?.name || "Unknown",
+          round,
+          actualScore: scoreResult.score,
+          preferredScore,
+          delta: biasInfo.delta,
+          bias: biasInfo.bias,
+          biasLabel: biasInfo.label,
+          gameMode: settings.gameMode || "solo",
+          dailyChallenge: Boolean(settings.dailyChallenge)
+        };
+
+        preferredScoreInput.disabled = true;
+        preferredScoreSubmitBtn.disabled = true;
+        feedbackStatus.style.color = "#555";
+        feedbackStatus.textContent = "Saving feedback...";
+
+        try {
+          await saveScoreFeedbackShared(entry);
+          updateSavedDrawingFeedback(savedDrawing, preferredScore, biasInfo);
+          feedbackStatus.style.color = "#2f6f2f";
+          feedbackStatus.textContent = `Feedback saved. Bias: ${biasInfo.bias} (${biasInfo.label}).`;
+        } catch (error) {
+          console.error("Could not save shared score feedback:", error);
+          preferredScoreInput.disabled = false;
+          preferredScoreSubmitBtn.disabled = false;
+          feedbackStatus.style.color = "#a12929";
+          feedbackStatus.textContent = "Feedback could not be saved. Check your Firebase permissions and try again.";
+        }
+      };
+    };
   }
 
   function showScoreThenContinue(scoreResult, savedDrawing = null) {
@@ -1709,8 +1744,7 @@ function setupCanvasPage() {
         ? "Saved"
         : `${scoreResult.score}/100`;
 
-    document.getElementById("scoreMessage").textContent =
-      scoreResult.message;
+    document.getElementById("scoreMessage").textContent = scoreResult.message;
 
     const breakdown = scoreResult.breakdown || {
       outline: 0,
@@ -1728,76 +1762,9 @@ function setupCanvasPage() {
 
     const continueBtn = document.getElementById("scoreContinueBtn");
     continueBtn.disabled = false;
-    continueBtn.textContent = settings.dailyChallenge
-      ? "Gallery"
-      : "Next Round";
+    continueBtn.textContent = settings.dailyChallenge ? "Gallery" : "Next Round";
 
-    const feedbackArea = document.getElementById("scoreFeedbackArea");
-    feedbackArea.innerHTML = `
-      <button id="scoreDisagreeBtn" type="button" style="border:0;background:transparent;color:#1684ff;font:inherit;font-size:17px;font-weight:800;cursor:pointer;padding:2px 4px;text-decoration:underline;box-shadow:none;">Disagree?</button>
-    `;
-
-    const savePreferredScore = () => {
-      const preferredScoreInput = document.getElementById("preferredScoreInput");
-      const preferredScoreSubmitBtn = document.getElementById("preferredScoreSubmitBtn");
-      const feedbackStatus = document.getElementById("scoreFeedbackStatus");
-      if (!preferredScoreInput || !preferredScoreSubmitBtn || !feedbackStatus) return;
-
-      const preferredScore = Number(preferredScoreInput.value);
-      if (!Number.isInteger(preferredScore) || preferredScore < 0 || preferredScore > 100) {
-        feedbackStatus.textContent = "Enter a whole number from 0 to 100.";
-        feedbackStatus.style.color = "#a12929";
-        return;
-      }
-
-      const biasInfo = getPreferredScoreBias(scoreResult.score, preferredScore);
-      const drawingLink = savedDrawing?.image || canvas.toDataURL("image/png");
-      const entry = {
-        timestamp: new Date().toISOString(),
-        user: getUsername(),
-        pokemonId: currentPokemon?.id ?? "",
-        pokemonName: currentPokemon?.name || "Unknown",
-        round,
-        actualScore: scoreResult.score,
-        preferredScore,
-        delta: biasInfo.delta,
-        bias: biasInfo.bias,
-        biasLabel: biasInfo.label,
-        drawingLink
-      };
-
-      const entries = getScoreFeedbackEntries();
-      entries.push(entry);
-      localStorage.setItem(getScoreFeedbackStorageKey(), JSON.stringify(entries));
-      updateSavedDrawingFeedback(savedDrawing, preferredScore, biasInfo);
-
-      feedbackStatus.style.color = "#2f6f2f";
-      feedbackStatus.textContent = `Feedback saved. Bias: ${biasInfo.bias} (${biasInfo.label}). A TXT copy was downloaded.`;
-      preferredScoreInput.disabled = true;
-      preferredScoreSubmitBtn.disabled = true;
-      downloadScoreFeedbackTxt(entries);
-    };
-
-    document.getElementById("scoreDisagreeBtn").onclick = () => {
-      feedbackArea.innerHTML = `
-        <div style="display:flex;flex-direction:column;align-items:center;gap:9px;">
-          <label for="preferredScoreInput" style="font-size:18px;font-weight:800;">What score would you give this drawing?</label>
-          <div style="display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;">
-            <input id="preferredScoreInput" type="number" min="0" max="100" step="1" inputmode="numeric" placeholder="0-100" style="width:90px;height:42px;padding:4px 10px;border:3px solid #111;border-radius:12px;background:white;font:inherit;font-size:18px;font-weight:800;text-align:center;">
-            <span style="font-size:18px;font-weight:800;">/100</span>
-            <button id="preferredScoreSubmitBtn" type="button" style="min-height:42px;padding:6px 16px;border:3px solid #111;border-radius:12px;background:white;box-shadow:0 4px 0 #111;font:inherit;font-weight:800;cursor:pointer;">Submit</button>
-          </div>
-          <p id="scoreFeedbackStatus" style="min-height:18px;margin:3px 0 0;font-size:14px;"></p>
-        </div>
-      `;
-
-      document.getElementById("preferredScoreSubmitBtn")?.addEventListener("click", savePreferredScore);
-      document.getElementById("preferredScoreInput")?.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") savePreferredScore();
-      });
-      document.getElementById("preferredScoreInput")?.focus();
-    };
-
+    resetScoreFeedbackArea(scoreResult, savedDrawing);
     modal.classList.remove("hidden");
 
     continueBtn.onclick = async () => {
@@ -1809,7 +1776,6 @@ function setupCanvasPage() {
         } catch (error) {
           console.error(error);
         }
-
         window.location.href = "daily-gallery.html";
         return;
       }
@@ -1818,7 +1784,6 @@ function setupCanvasPage() {
       advanceRoundAfterDone();
     };
   }
-
 
 
   if (channel) {
